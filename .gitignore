@@ -1,0 +1,25 @@
+# Node / React
+UI_REACT/node_modules/
+UI_REACT/dist/
+UI_REACT/.oxlint-cache
+UI_REACT/coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Flutter / Dart
+UI_MOVIL/.dart_tool/
+UI_MOVIL/.flutter-plugins
+UI_MOVIL/.flutter-plugins-dependencies
+UI_MOVIL/.packages
+UI_MOVIL/build/
+UI_MOVIL/.idea/
+UI_MOVIL/*.iml
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.swp
+*.bak
+.vscode/
