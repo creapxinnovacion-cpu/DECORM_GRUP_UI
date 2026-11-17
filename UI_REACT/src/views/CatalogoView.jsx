@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Sparkles,
   Check,
+  X,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { Badge } from '../components/Badge';
@@ -45,6 +46,11 @@ export function CatalogoView() {
   });
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Edit Article modal
+  const [editingItem, setEditingItem] = useState(null);
+  const [editValues, setEditValues] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const fetchCatalogo = async () => {
     setLoading(true);
@@ -83,7 +89,6 @@ export function CatalogoView() {
       setNewSku(res.formatted);
     } catch (err) {
       console.error('Error al generar correlativo:', err);
-      // Fallback
       setNewSku(`${prefijo}-${Math.floor(100 + Math.random() * 900)}`);
     } finally {
       setGeneratingSku(false);
@@ -108,11 +113,39 @@ export function CatalogoView() {
         setShowCreateModal(false);
         setNewSku('');
         fetchCatalogo();
-      }, 1200);
+      }, 1000);
     } catch (err) {
       alert('Error al crear artículo: ' + err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openEditModal = (item) => {
+    setEditingItem(item);
+    setEditValues({
+      descripcion: item.descripcion || '',
+      categoria: item.categoria || 'Consumibles',
+      unidad: item.unidad || 'Unidad',
+      origen: item.origen || 'Local',
+      proveedor_pref: item.proveedor_pref || '',
+      stock_inicial: item.stock_inicial ?? 0,
+      stock_minimo: item.stock_minimo ?? 10,
+    });
+  };
+
+  const handleUpdateArticle = async (e) => {
+    e.preventDefault();
+    if (!editingItem) return;
+    setSavingEdit(true);
+    try {
+      await api.updateArticulo(editingItem.sku, editValues);
+      setEditingItem(null);
+      fetchCatalogo();
+    } catch (err) {
+      alert('Error al actualizar artículo: ' + err.message);
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -148,7 +181,7 @@ export function CatalogoView() {
               Catálogo Maestro Unificado
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              {total > 0 ? total : 128} SKUs gobernados por fórmulas · Kardex cronológico y cálculo automático de stock
+              {total > 0 ? total : 128} SKUs · CRUD completo, edición, correlativos y Kardex en vivo
             </p>
           </div>
 
@@ -168,7 +201,6 @@ export function CatalogoView() {
 
         {/* Filter Bar */}
         <div className="mt-6 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-          {/* Search Box */}
           <div className="relative flex-1 max-w-md">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
@@ -180,7 +212,6 @@ export function CatalogoView() {
             />
           </div>
 
-          {/* Category Chips */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
             {categories.map((cat) => (
               <button
@@ -215,7 +246,7 @@ export function CatalogoView() {
                 <th className="py-3.5 px-3 text-right">PMP / Ref $</th>
                 <th className="py-3.5 px-3 text-right">Valor $</th>
                 <th className="py-3.5 px-3 text-center">Estado</th>
-                <th className="py-3.5 px-4 text-center">Kardex</th>
+                <th className="py-3.5 px-4 text-center">Acciones CRUD</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-medium">
@@ -291,13 +322,24 @@ export function CatalogoView() {
                         )}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <button
-                          onClick={() => openKardex(item.sku)}
-                          className="p-1.5 text-slate-400 hover:text-amber-400 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
-                          title="Ver historial de Kardex"
-                        >
-                          <History className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          {/* Edit button */}
+                          <button
+                            onClick={() => openEditModal(item)}
+                            className="p-1.5 text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 rounded-lg transition-colors cursor-pointer border border-amber-500/20"
+                            title="Editar artículo"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          {/* Kardex button */}
+                          <button
+                            onClick={() => openKardex(item.sku)}
+                            className="p-1.5 text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 rounded-lg transition-colors cursor-pointer border border-sky-500/20"
+                            title="Ver historial de Kardex"
+                          >
+                            <History className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -379,7 +421,7 @@ export function CatalogoView() {
         )}
       </Modal>
 
-      {/* Modal Nuevo Artículo */}
+      {/* Modal Nuevo Artículo (Create) */}
       <Modal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
@@ -542,6 +584,112 @@ export function CatalogoView() {
               ) : (
                 'Guardar en Hoja de Cálculo'
               )}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal Editar Artículo (Update) */}
+      <Modal
+        isOpen={Boolean(editingItem)}
+        onClose={() => setEditingItem(null)}
+        title={`Editar Artículo — ${editingItem?.sku}`}
+        maxWidth="max-w-xl"
+      >
+        <form onSubmit={handleUpdateArticle} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">
+              Descripción
+            </label>
+            <input
+              type="text"
+              required
+              value={editValues.descripcion || ''}
+              onChange={(e) => setEditValues({ ...editValues, descripcion: e.target.value })}
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Categoría
+              </label>
+              <select
+                value={editValues.categoria || 'Consumibles'}
+                onChange={(e) => setEditValues({ ...editValues, categoria: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+              >
+                <option value="Consumibles">Consumibles</option>
+                <option value="Herrajes">Herrajes</option>
+                <option value="Pinturas">Pinturas</option>
+                <option value="Lijas">Lijas</option>
+                <option value="Selladores y Silicones">Selladores y Silicones</option>
+                <option value="Equipos">Equipos</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Unidad
+              </label>
+              <select
+                value={editValues.unidad || 'Unidad'}
+                onChange={(e) => setEditValues({ ...editValues, unidad: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+              >
+                <option value="Unidad">Unidad</option>
+                <option value="Pliego">Pliego</option>
+                <option value="Galón">Galón</option>
+                <option value="Tubo">Tubo</option>
+                <option value="Par">Par</option>
+                <option value="Rollo">Rollo</option>
+                <option value="Caja">Caja</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Proveedor Preferido
+              </label>
+              <input
+                type="text"
+                value={editValues.proveedor_pref || ''}
+                onChange={(e) => setEditValues({ ...editValues, proveedor_pref: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Stock Mínimo
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={editValues.stock_minimo ?? 0}
+                onChange={(e) => setEditValues({ ...editValues, stock_minimo: Number(e.target.value) })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => setEditingItem(null)}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={savingEdit}
+              className="flex items-center gap-2 px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 cursor-pointer"
+            >
+              {savingEdit ? 'Actualizando...' : 'Actualizar Cambios en Sheets'}
             </button>
           </div>
         </form>

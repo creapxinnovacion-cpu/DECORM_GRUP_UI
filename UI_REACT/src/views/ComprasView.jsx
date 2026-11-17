@@ -3,7 +3,6 @@ import {
   ShoppingCart,
   Plus,
   FileCode,
-  FileText,
   Search,
   CheckCircle,
   AlertTriangle,
@@ -13,6 +12,8 @@ import {
   DollarSign,
   Upload,
   ArrowRight,
+  Edit2,
+  Trash2,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { Badge } from '../components/Badge';
@@ -39,6 +40,11 @@ export function ComprasView() {
     n_dte: '',
     observaciones: '',
   });
+
+  // Modal Editar Compra
+  const [editingCompra, setEditingCompra] = useState(null);
+  const [editFormData, setEditFormData] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Modal DTE Import
   const [showDteModal, setShowDteModal] = useState(false);
@@ -97,6 +103,54 @@ export function ComprasView() {
     }
   };
 
+  const openEditModal = (compra) => {
+    setEditingCompra(compra);
+    setEditFormData({
+      fecha: compra.fecha || new Date().toISOString().split('T')[0],
+      proveedor: compra.proveedor || '',
+      sku: compra.sku || '',
+      cant_recibida: compra.cant_recibida ?? 1,
+      precio_unit_pagado: compra.precio_unit_pagado ?? 0,
+      taller_destino: compra.taller_destino || 'Taller 1',
+      tipo_dte: compra.tipo_dte || 'CCF',
+      n_dte: compra.n_dte || '',
+      observaciones: compra.observaciones || '',
+    });
+  };
+
+  const handleUpdateCompra = async (e) => {
+    e.preventDefault();
+    if (!editingCompra?._rowNumber) return;
+    setSavingEdit(true);
+    try {
+      await api.updateCompra(editingCompra._rowNumber, editFormData);
+      setEditingCompra(null);
+      fetchCompras();
+    } catch (err) {
+      alert('Error al actualizar compra: ' + err.message);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteCompra = async (compra) => {
+    if (!compra._rowNumber) return;
+    if (
+      !window.confirm(
+        `¿Está seguro de eliminar/anular la compra de ${compra.proveedor} (${compra.sku}) en la fila ${compra._rowNumber}?`
+      )
+    ) {
+      return;
+    }
+    try {
+      await api.clearCompra(compra._rowNumber);
+      alert('Fila de compra limpiada en Sheets.');
+      fetchCompras();
+    } catch (err) {
+      alert('Error al eliminar compra: ' + err.message);
+    }
+  };
+
   const handleParseDte = () => {
     setDteError(null);
     try {
@@ -146,7 +200,7 @@ export function ComprasView() {
               Gestión de Compras & DTE El Salvador
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              Registro con cálculo de IVA Crédito Fiscal (13% en CCF) · Importador directo de Factura Electrónica
+              CRUD Completo: Crear, Editar, Anular/Eliminar · Cálculo de IVA Crédito Fiscal 13% en CCF
             </p>
           </div>
 
@@ -181,42 +235,47 @@ export function ComprasView() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table with Actions */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-slate-800 bg-slate-950/40 text-slate-400 uppercase font-bold tracking-wider">
+                <th className="py-3.5 px-3">Fila</th>
                 <th className="py-3.5 px-4">Fecha</th>
                 <th className="py-3.5 px-4">Proveedor</th>
                 <th className="py-3.5 px-3">SKU</th>
                 <th className="py-3.5 px-4">Descripción</th>
                 <th className="py-3.5 px-3 text-right">Cant. Recibida</th>
-                <th className="py-3.5 px-3 text-right">P. Unit Pagado $</th>
-                <th className="py-3.5 px-3 text-right">Total Pagado $</th>
+                <th className="py-3.5 px-3 text-right">P. Unit $</th>
+                <th className="py-3.5 px-3 text-right">Total $</th>
                 <th className="py-3.5 px-3 text-right text-emerald-400">IVA Crédito $</th>
                 <th className="py-3.5 px-3 text-center">Tipo DTE</th>
                 <th className="py-3.5 px-3">N.° DTE / Factura</th>
-                <th className="py-3.5 px-3 text-center">Taller Destino</th>
+                <th className="py-3.5 px-3 text-center">Taller</th>
+                <th className="py-3.5 px-4 text-center">Acciones CRUD</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-medium">
               {loading ? (
                 <tr>
-                  <td colSpan="11" className="py-12 text-center text-slate-400">
+                  <td colSpan="13" className="py-12 text-center text-slate-400">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto text-sky-400 mb-2" />
                     Cargando compras desde Google Sheets...
                   </td>
                 </tr>
               ) : filteredCompras.length === 0 ? (
                 <tr>
-                  <td colSpan="11" className="py-12 text-center text-slate-500">
+                  <td colSpan="13" className="py-12 text-center text-slate-500">
                     No hay compras registradas en este período.
                   </td>
                 </tr>
               ) : (
                 filteredCompras.map((compra, idx) => (
                   <tr key={idx} className="hover:bg-slate-800/50 transition-colors">
+                    <td className="py-3 px-3 font-mono text-slate-500">
+                      R{compra._rowNumber || idx + 2}
+                    </td>
                     <td className="py-3 px-4 text-slate-300 font-mono whitespace-nowrap">
                       {compra.fecha}
                     </td>
@@ -251,6 +310,26 @@ export function ComprasView() {
                     </td>
                     <td className="py-3 px-3 text-center">
                       <Badge variant="info">{compra.taller_destino || 'Taller 1'}</Badge>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        {/* Edit button */}
+                        <button
+                          onClick={() => openEditModal(compra)}
+                          className="p-1.5 text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 rounded-lg transition-colors cursor-pointer border border-sky-500/20"
+                          title="Editar compra"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        {/* Delete button */}
+                        <button
+                          onClick={() => handleDeleteCompra(compra)}
+                          className="p-1.5 text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 rounded-lg transition-colors cursor-pointer border border-rose-500/20"
+                          title="Eliminar / Limpiar fila"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -408,13 +487,6 @@ export function ComprasView() {
             </div>
           </div>
 
-          <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
-            <span className="text-slate-400">Total a Pagar Estimado:</span>
-            <span className="font-bold text-amber-400 text-sm font-mono">
-              ${(formData.cant_recibida * formData.precio_unit_pagado).toFixed(2)}
-            </span>
-          </div>
-
           <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-800">
             <button
               type="button"
@@ -429,6 +501,157 @@ export function ComprasView() {
               className="px-5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-sky-500/20 cursor-pointer"
             >
               {saving ? 'Guardando en Sheets...' : 'Guardar Compra'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal Editar Compra (Update) */}
+      <Modal
+        isOpen={Boolean(editingCompra)}
+        onClose={() => setEditingCompra(null)}
+        title={`Editar Compra — Fila ${editingCompra?._rowNumber} (${editingCompra?.sku})`}
+        maxWidth="max-w-2xl"
+      >
+        <form onSubmit={handleUpdateCompra} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Fecha
+              </label>
+              <input
+                type="date"
+                required
+                value={editFormData.fecha || ''}
+                onChange={(e) => setEditFormData({ ...editFormData, fecha: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-sky-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Proveedor
+              </label>
+              <input
+                type="text"
+                required
+                value={editFormData.proveedor || ''}
+                onChange={(e) => setEditFormData({ ...editFormData, proveedor: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-sky-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                SKU
+              </label>
+              <select
+                required
+                value={editFormData.sku || ''}
+                onChange={(e) => setEditFormData({ ...editFormData, sku: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-sky-500 font-mono"
+              >
+                {catalogoItems.map((item) => (
+                  <option key={item.sku} value={item.sku}>
+                    {item.sku} — {item.descripcion}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Taller Destino
+              </label>
+              <select
+                value={editFormData.taller_destino || 'Taller 1'}
+                onChange={(e) => setEditFormData({ ...editFormData, taller_destino: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-sky-500"
+              >
+                <option value="Taller 1">Taller 1</option>
+                <option value="Taller 2">Taller 2</option>
+                <option value="Taller 3">Taller 3</option>
+                <option value="Bodega Central">Bodega Central</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Cant. Recibida
+              </label>
+              <input
+                type="number"
+                min="1"
+                required
+                value={editFormData.cant_recibida ?? 1}
+                onChange={(e) => setEditFormData({ ...editFormData, cant_recibida: Number(e.target.value) })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-sky-500 font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Precio Unit. Pagado $
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                required
+                value={editFormData.precio_unit_pagado ?? 0}
+                onChange={(e) => setEditFormData({ ...editFormData, precio_unit_pagado: Number(e.target.value) })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-sky-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Tipo DTE
+              </label>
+              <select
+                value={editFormData.tipo_dte || 'CCF'}
+                onChange={(e) => setEditFormData({ ...editFormData, tipo_dte: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-sky-500"
+              >
+                <option value="CCF">CCF — Crédito Fiscal (13% IVA)</option>
+                <option value="Factura">Factura</option>
+                <option value="Sujeto Excluido">Sujeto Excluido</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                N.° DTE / Factura
+              </label>
+              <input
+                type="text"
+                value={editFormData.n_dte || ''}
+                onChange={(e) => setEditFormData({ ...editFormData, n_dte: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-sky-500"
+              />
+            </div>
+          </div>
+
+          <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => setEditingCompra(null)}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={savingEdit}
+              className="px-5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-sky-500/20 cursor-pointer"
+            >
+              {savingEdit ? 'Actualizando...' : 'Actualizar Compra en Sheets'}
             </button>
           </div>
         </form>

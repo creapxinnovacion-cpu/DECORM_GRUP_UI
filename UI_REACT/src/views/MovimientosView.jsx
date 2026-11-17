@@ -12,6 +12,8 @@ import {
   Layers,
   ArrowUpRight,
   ArrowDownRight,
+  Edit2,
+  Trash2,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { Badge } from '../components/Badge';
@@ -24,7 +26,7 @@ export function MovimientosView() {
   const [catalogoItems, setCatalogoItems] = useState([]);
   const [puertas, setPuertas] = useState([]);
 
-  // Modal Normal Movement
+  // Modal Normal Movement (Create)
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
@@ -36,6 +38,11 @@ export function MovimientosView() {
     entregado_a: '',
     observaciones: '',
   });
+
+  // Modal Edit Movement (Update)
+  const [editingMov, setEditingMov] = useState(null);
+  const [editFormData, setEditFormData] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Modal Entregar a Puerta
   const [showPuertaModal, setShowPuertaModal] = useState(false);
@@ -95,6 +102,52 @@ export function MovimientosView() {
     }
   };
 
+  const openEditModal = (m) => {
+    setEditingMov(m);
+    setEditFormData({
+      fecha: m.fecha || new Date().toISOString().split('T')[0],
+      tipo: m.tipo || 'Salida',
+      sku: m.sku || '',
+      cantidad: m.cantidad ?? 1,
+      taller_destino: m.taller_destino || 'Taller 1',
+      entregado_a: m.entregado_a || '',
+      observaciones: m.observaciones || '',
+    });
+  };
+
+  const handleUpdateMovimiento = async (e) => {
+    e.preventDefault();
+    if (!editingMov?._rowNumber) return;
+    setSavingEdit(true);
+    try {
+      await api.updateMovimiento(editingMov._rowNumber, editFormData);
+      setEditingMov(null);
+      fetchMovimientos();
+    } catch (err) {
+      alert('Error al actualizar movimiento: ' + err.message);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteMovimiento = async (m) => {
+    if (!m._rowNumber) return;
+    if (
+      !window.confirm(
+        `¿Está seguro de anular/limpiar el movimiento ${m.id || ''} (${m.sku} - ${m.cantidad} u.) en la fila ${m._rowNumber}?`
+      )
+    ) {
+      return;
+    }
+    try {
+      await api.clearMovimiento(m._rowNumber);
+      alert('Movimiento limpiado en Sheets.');
+      fetchMovimientos();
+    } catch (err) {
+      alert('Error al limpiar movimiento: ' + err.message);
+    }
+  };
+
   const handleEntregarPuerta = async (e) => {
     e.preventDefault();
     if (!puertaFormData.sku_puerta || !puertaFormData.sku) {
@@ -143,7 +196,7 @@ export function MovimientosView() {
               Movimientos Operativos de Insumos
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              Salidas a talleres, devoluciones y asignación directa a puertas en producción
+              CRUD Completo: Salidas, Devoluciones, Ajustes, Edición y Anulación con trazabilidad
             </p>
           </div>
 
@@ -178,12 +231,13 @@ export function MovimientosView() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table with CRUD Actions */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-slate-800 bg-slate-950/40 text-slate-400 uppercase font-bold tracking-wider">
+                <th className="py-3.5 px-3">Fila</th>
                 <th className="py-3.5 px-4">ID</th>
                 <th className="py-3.5 px-4">Fecha</th>
                 <th className="py-3.5 px-3">Tipo</th>
@@ -194,25 +248,29 @@ export function MovimientosView() {
                 <th className="py-3.5 px-4">Entregado a</th>
                 <th className="py-3.5 px-3 text-right">Costo Est. $</th>
                 <th className="py-3.5 px-4">Observaciones</th>
+                <th className="py-3.5 px-4 text-center">Acciones CRUD</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-medium">
               {loading ? (
                 <tr>
-                  <td colSpan="10" className="py-12 text-center text-slate-400">
+                  <td colSpan="12" className="py-12 text-center text-slate-400">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto text-amber-500 mb-2" />
                     Cargando movimientos...
                   </td>
                 </tr>
               ) : filteredMovs.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="py-12 text-center text-slate-500">
+                  <td colSpan="12" className="py-12 text-center text-slate-500">
                     No se encontraron movimientos registrados.
                   </td>
                 </tr>
               ) : (
                 filteredMovs.map((m, idx) => (
                   <tr key={idx} className="hover:bg-slate-800/50 transition-colors">
+                    <td className="py-3 px-3 font-mono text-slate-500">
+                      R{m._rowNumber || idx + 2}
+                    </td>
                     <td className="py-3 px-4 font-mono font-bold text-slate-300">
                       {m.id || `MOV-${String(idx + 1).padStart(4, '0')}`}
                     </td>
@@ -253,6 +311,26 @@ export function MovimientosView() {
                     <td className="py-3 px-4 text-slate-400 truncate max-w-xs" title={m.observaciones}>
                       {m.observaciones || '-'}
                     </td>
+                    <td className="py-3 px-4 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        {/* Edit */}
+                        <button
+                          onClick={() => openEditModal(m)}
+                          className="p-1.5 text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 rounded-lg transition-colors cursor-pointer border border-amber-500/20"
+                          title="Editar movimiento"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        {/* Delete / Clear */}
+                        <button
+                          onClick={() => handleDeleteMovimiento(m)}
+                          className="p-1.5 text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 rounded-lg transition-colors cursor-pointer border border-rose-500/20"
+                          title="Anular / Limpiar fila"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
@@ -261,7 +339,7 @@ export function MovimientosView() {
         </div>
       </div>
 
-      {/* Modal Registrar Movimiento */}
+      {/* Modal Registrar Movimiento (Create) */}
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
@@ -394,6 +472,143 @@ export function MovimientosView() {
               className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 cursor-pointer"
             >
               {saving ? 'Guardando...' : 'Guardar Salida'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal Editar Movimiento (Update) */}
+      <Modal
+        isOpen={Boolean(editingMov)}
+        onClose={() => setEditingMov(null)}
+        title={`Editar Movimiento — Fila ${editingMov?._rowNumber} (${editingMov?.id || ''})`}
+        maxWidth="max-w-xl"
+      >
+        <form onSubmit={handleUpdateMovimiento} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Fecha
+              </label>
+              <input
+                type="date"
+                required
+                value={editFormData.fecha || ''}
+                onChange={(e) => setEditFormData({ ...editFormData, fecha: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Tipo
+              </label>
+              <select
+                value={editFormData.tipo || 'Salida'}
+                onChange={(e) => setEditFormData({ ...editFormData, tipo: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+              >
+                <option value="Salida">Salida</option>
+                <option value="Devolución">Devolución</option>
+                <option value="Ajuste (+)">Ajuste (+)</option>
+                <option value="Ajuste (-)">Ajuste (-)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                SKU
+              </label>
+              <select
+                required
+                value={editFormData.sku || ''}
+                onChange={(e) => setEditFormData({ ...editFormData, sku: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500 font-mono"
+              >
+                {catalogoItems.map((item) => (
+                  <option key={item.sku} value={item.sku}>
+                    {item.sku} — {item.descripcion}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Cantidad
+              </label>
+              <input
+                type="number"
+                min="0.1"
+                step="any"
+                required
+                value={editFormData.cantidad ?? 1}
+                onChange={(e) => setEditFormData({ ...editFormData, cantidad: Number(e.target.value) })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500 font-bold"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Taller / Destino
+              </label>
+              <select
+                value={editFormData.taller_destino || 'Taller 1'}
+                onChange={(e) => setEditFormData({ ...editFormData, taller_destino: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+              >
+                <option value="Taller 1">Taller 1</option>
+                <option value="Taller 2">Taller 2</option>
+                <option value="Taller 3">Taller 3</option>
+                <option value="Pintura">Área de Pintura</option>
+                <option value="Armado">Área de Armado</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Entregado a
+              </label>
+              <input
+                type="text"
+                required
+                value={editFormData.entregado_a || ''}
+                onChange={(e) => setEditFormData({ ...editFormData, entregado_a: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">
+              Observaciones
+            </label>
+            <input
+              type="text"
+              value={editFormData.observaciones || ''}
+              onChange={(e) => setEditFormData({ ...editFormData, observaciones: e.target.value })}
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+            />
+          </div>
+
+          <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => setEditingMov(null)}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={savingEdit}
+              className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 cursor-pointer"
+            >
+              {savingEdit ? 'Actualizando...' : 'Actualizar Movimiento en Sheets'}
             </button>
           </div>
         </form>

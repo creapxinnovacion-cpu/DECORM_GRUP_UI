@@ -6,6 +6,8 @@ import '../config/theme.dart';
 import 'login_screen.dart';
 import 'salidas_screen.dart';
 import 'entrega_puerta_screen.dart';
+import 'puertas_screen.dart';
+import 'compras_screen.dart';
 import 'prestamos_screen.dart';
 import 'conteo_fisico_screen.dart';
 import 'consulta_catalogo_screen.dart';
@@ -37,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
         .where((p) => p.cantDevuelta < p.cantPrestada)
         .length;
     final puertasActivas = bodega.puertas.length;
+    final totalCompras = bodega.compras.length;
 
     return Scaffold(
       appBar: AppBar(
@@ -154,28 +157,37 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         Expanded(
                           child: _buildMetricCard(
-                            title: 'SKUs Catálogo',
+                            title: 'Catálogo',
                             value: totalSkus > 0 ? '$totalSkus' : '128',
                             icon: Icons.inventory_2_outlined,
                             color: DecormTheme.primaryAmber,
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: _buildMetricCard(
-                            title: 'Préstamos Activos',
+                            title: 'Préstamos',
                             value: '$prestamosPendientes',
                             icon: Icons.build_outlined,
                             color: DecormTheme.statusWarning,
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: _buildMetricCard(
-                            title: 'Puertas Proceso',
+                            title: 'Puertas',
                             value: '$puertasActivas',
                             icon: Icons.meeting_room_outlined,
                             color: DecormTheme.statusInfo,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildMetricCard(
+                            title: 'Compras',
+                            value: '$totalCompras',
+                            icon: Icons.shopping_cart_outlined,
+                            color: DecormTheme.statusSuccess,
                           ),
                         ),
                       ],
@@ -183,7 +195,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 24),
 
                     const Text(
-                      'OPERACIONES DE BODEGA',
+                      'MÓDULOS OPERATIVOS (CRUD COMPLETO)',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w800,
@@ -193,82 +205,102 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Action 1: Salida a Taller
+                    // Action 1: Salida a Taller & Historial CRUD
                     _buildActionTile(
                       icon: Icons.local_shipping_outlined,
-                      title: 'Salida de Insumos a Talleres',
-                      subtitle: 'Despachar materiales a Taller 1, 2 o 3',
-                      badgeText: 'Salida',
+                      title: 'Salidas de Insumos & Historial',
+                      subtitle: 'Registrar, editar y anular salidas a taller',
+                      badgeText: 'Salidas CRUD',
                       badgeColor: DecormTheme.primaryAmber,
                       onTap: () => Navigator.push(
                         context,
-                        MaterialPageRoute(
-                            builder: (_) => const SalidasScreen()),
+                        MaterialPageRoute(builder: (_) => const SalidasScreen()),
                       ),
                     ),
                     const SizedBox(height: 10),
 
-                    // Action 2: Entregar a Puerta
+                    // Action 2: Entregar Insumo a Puerta
                     _buildActionTile(
                       icon: Icons.door_sliding_outlined,
                       title: 'Entregar Insumo a Puerta',
-                      subtitle:
-                          'Vincular consumo a código de puerta en producción',
-                      badgeText: 'Puertas',
+                      subtitle: 'Vincular consumo directo a código de puerta',
+                      badgeText: 'Despacho',
                       badgeColor: DecormTheme.statusInfo,
                       onTap: () => Navigator.push(
                         context,
-                        MaterialPageRoute(
-                            builder: (_) => const EntregaPuertaScreen()),
+                        MaterialPageRoute(builder: (_) => const EntregaPuertaScreen()),
                       ),
                     ),
                     const SizedBox(height: 10),
 
-                    // Action 3: Préstamos de Equipos
+                    // Action 3: Agenda de Puertas CRUD
+                    _buildActionTile(
+                      icon: Icons.meeting_room_outlined,
+                      title: 'Agenda de Puertas en Producción',
+                      subtitle: 'Crear, editar estado (Pendiente/Proceso/Terminada)',
+                      badgeText: '$puertasActivas puertas',
+                      badgeColor: DecormTheme.statusInfo,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const PuertasScreen()),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Action 4: Gestión de Compras CRUD
+                    _buildActionTile(
+                      icon: Icons.shopping_cart_outlined,
+                      title: 'Gestión de Compras (DTE)',
+                      subtitle: 'Registrar, editar y anular compras con IVA',
+                      badgeText: 'Compras CRUD',
+                      badgeColor: DecormTheme.statusSuccess,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const ComprasScreen()),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Action 5: Préstamos de Equipos CRUD
                     _buildActionTile(
                       icon: Icons.home_repair_service_outlined,
                       title: 'Préstamos de Herramientas (EQU)',
-                      subtitle:
-                          'Control de salida y retorno de herramientas',
+                      subtitle: 'Control de salida y retorno de herramientas',
                       badgeText: '$prestamosPendientes pend.',
                       badgeColor: prestamosPendientes > 0
                           ? DecormTheme.statusDanger
                           : DecormTheme.statusSuccess,
                       onTap: () => Navigator.push(
                         context,
-                        MaterialPageRoute(
-                            builder: (_) => const PrestamosScreen()),
+                        MaterialPageRoute(builder: (_) => const PrestamosScreen()),
                       ),
                     ),
                     const SizedBox(height: 10),
 
-                    // Action 4: Conteo Físico
+                    // Action 6: Conteo Físico
                     _buildActionTile(
                       icon: Icons.checklist_outlined,
                       title: 'Toma de Inventario Físico',
-                      subtitle:
-                          'Conteo en anaquel (INS-0xx) para conciliación',
+                      subtitle: 'Conteo en anaquel (INS-0xx) para conciliación',
                       badgeText: 'Conteo',
-                      badgeColor: DecormTheme.statusSuccess,
+                      badgeColor: DecormTheme.statusWarning,
                       onTap: () => Navigator.push(
                         context,
-                        MaterialPageRoute(
-                            builder: (_) => const ConteoFisicoScreen()),
+                        MaterialPageRoute(builder: (_) => const ConteoFisicoScreen()),
                       ),
                     ),
                     const SizedBox(height: 10),
 
-                    // Action 5: Consulta de Catálogo
+                    // Action 7: Catálogo Maestro CRUD
                     _buildActionTile(
-                      icon: Icons.search_outlined,
-                      title: 'Consulta Rápida de Catálogo',
-                      subtitle: 'Ver stock actual, mínimos y estados',
-                      badgeText: 'Stock',
+                      icon: Icons.inventory_2_outlined,
+                      title: 'Catálogo Maestro & Stock',
+                      subtitle: 'Crear SKU, editar artículo, ver existencias',
+                      badgeText: 'Catálogo CRUD',
                       badgeColor: DecormTheme.primaryAmber,
                       onTap: () => Navigator.push(
                         context,
-                        MaterialPageRoute(
-                            builder: (_) => const ConsultaCatalogoScreen()),
+                        MaterialPageRoute(builder: (_) => const ConsultaCatalogoScreen()),
                       ),
                     ),
                   ],
@@ -285,7 +317,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required Color color,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
       decoration: BoxDecoration(
         color: DecormTheme.cardDark,
         borderRadius: BorderRadius.circular(14),
@@ -294,12 +326,12 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 18),
-          const SizedBox(height: 6),
+          Icon(icon, color: color, size: 16),
+          const SizedBox(height: 4),
           Text(
             value,
             style: TextStyle(
-              fontSize: 18,
+              fontSize: 16,
               fontWeight: FontWeight.w900,
               color: color,
             ),
@@ -308,7 +340,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Text(
             title,
             style: const TextStyle(
-              fontSize: 10,
+              fontSize: 9,
               color: DecormTheme.textSecondary,
               fontWeight: FontWeight.w600,
             ),

@@ -23,7 +23,6 @@ class ApiService {
     };
 
     try {
-      // POST with text/plain to avoid CORS / preflight
       final response = await http.post(
         Uri.parse(ApiConfig.baseUrl),
         headers: {'Content-Type': 'text/plain;charset=utf-8'},
@@ -43,7 +42,6 @@ class ApiService {
         throw Exception('Error HTTP: ${response.statusCode}');
       }
     } catch (e) {
-      // Fallback via GET
       final uri = Uri.parse(ApiConfig.baseUrl).replace(queryParameters: {
         'action': action,
         if (_token != null && _token!.isNotEmpty) 'token': _token,
@@ -69,16 +67,62 @@ class ApiService {
     return res;
   }
 
-  // Catálogo
+  // Catálogo CRUD
   Future<List<ArticuloModel>> getCatalogo({int pageSize = 150}) async {
     final res = await _call('catalogo.list', {'pageSize': pageSize});
     final rows = res['rows'] as List<dynamic>? ?? [];
     return rows.map((e) => ArticuloModel.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  // Movimientos
+  Future<void> createArticulo(Map<String, dynamic> articulo) async {
+    await _call('catalogo.create', articulo);
+  }
+
+  Future<void> updateArticulo(String sku, Map<String, dynamic> changes) async {
+    await _call('catalogo.update', {'sku': sku, 'changes': changes});
+  }
+
+  Future<String> getNextSku(String prefijo) async {
+    final res = await _call('catalogo.nextSku', {'prefijo': prefijo});
+    return res['formatted']?.toString() ?? '$prefijo-100';
+  }
+
+  // Compras CRUD
+  Future<List<Map<String, dynamic>>> getCompras({int pageSize = 100}) async {
+    final res = await _call('compras.list', {'pageSize': pageSize});
+    final rows = res['rows'] as List<dynamic>? ?? [];
+    return rows.map((e) => e as Map<String, dynamic>).toList();
+  }
+
+  Future<void> createCompra(Map<String, dynamic> compra) async {
+    await _call('compras.create', compra);
+  }
+
+  Future<void> updateCompra(int rowNumber, Map<String, dynamic> changes) async {
+    await _call('compras.update', {'rowNumber': rowNumber, 'changes': changes});
+  }
+
+  Future<void> clearCompra(int rowNumber) async {
+    await _call('compras.clear', {'rowNumber': rowNumber});
+  }
+
+  // Movimientos CRUD
+  Future<List<MovimientoModel>> getMovimientos({int pageSize = 100}) async {
+    final res = await _call('movimientos.list', {'pageSize': pageSize});
+    final rows = res['rows'] as List<dynamic>? ?? [];
+    return rows.map((e) => MovimientoModel.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   Future<void> registrarSalida(MovimientoModel mov) async {
     await _call('movimientos.create', mov.toJson());
+  }
+
+  Future<void> updateMovimiento(int rowNumber, Map<String, dynamic> changes) async {
+    await _call('movimientos.update', {'rowNumber': rowNumber, 'changes': changes});
+  }
+
+  Future<void> clearMovimiento(int rowNumber) async {
+    await _call('movimientos.clear', {'rowNumber': rowNumber});
   }
 
   Future<void> entregarAPuerta({
@@ -97,7 +141,7 @@ class ApiService {
     });
   }
 
-  // Préstamos
+  // Préstamos CRUD
   Future<List<PrestamoModel>> getPrestamos() async {
     final res = await _call('prestamos.list', {'pageSize': 50});
     final rows = res['rows'] as List<dynamic>? ?? [];
@@ -122,14 +166,22 @@ class ApiService {
     });
   }
 
-  // Puertas
+  // Puertas CRUD
   Future<List<PuertaModel>> getPuertas() async {
     final res = await _call('puertas.list', {'pageSize': 50});
     final rows = res['rows'] as List<dynamic>? ?? [];
     return rows.map((e) => PuertaModel.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  // Seguimiento Conteo Manual
+  Future<void> createPuerta(Map<String, dynamic> puerta) async {
+    await _call('puertas.create', puerta);
+  }
+
+  Future<void> updatePuerta(String skuPuerta, Map<String, dynamic> changes) async {
+    await _call('puertas.update', {'sku_puerta': skuPuerta, 'changes': changes});
+  }
+
+  // Seguimiento Conteo Manual CRUD
   Future<List<SeguimientoModel>> getSeguimiento() async {
     final res = await _call('seguimiento.list', {'pageSize': 50});
     final rows = res['rows'] as List<dynamic>? ?? [];

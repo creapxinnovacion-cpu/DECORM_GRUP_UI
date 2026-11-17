@@ -8,7 +8,7 @@ import {
   Calendar,
   Building,
   RefreshCw,
-  Edit,
+  Edit2,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { Badge } from '../components/Badge';
@@ -19,7 +19,7 @@ export function PuertasView() {
   const [puertas, setPuertas] = useState([]);
   const [search, setSearch] = useState('');
 
-  // Modal Nueva Puerta
+  // Modal Nueva Puerta (Create)
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
@@ -39,6 +39,11 @@ export function PuertasView() {
     notas_tecnicas: '',
     taller: 'Taller 1',
   });
+
+  // Modal Editar Puerta (Update)
+  const [editingPuerta, setEditingPuerta] = useState(null);
+  const [editFormData, setEditFormData] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const fetchPuertas = async () => {
     setLoading(true);
@@ -74,6 +79,36 @@ export function PuertasView() {
     }
   };
 
+  const openEditModal = (p) => {
+    setEditingPuerta(p);
+    setEditFormData({
+      cliente: p.cliente || '',
+      modelo: p.modelo || '',
+      taller: p.taller || 'Taller 1',
+      estado: p.estado || 'En Proceso',
+      medidas: p.medidas || '',
+      color: p.color || '',
+      unidades: p.unidades ?? 1,
+      dia_entrega: p.dia_entrega || new Date().toISOString().split('T')[0],
+      notas_tecnicas: p.notas_tecnicas || '',
+    });
+  };
+
+  const handleUpdatePuerta = async (e) => {
+    e.preventDefault();
+    if (!editingPuerta?.sku_puerta) return;
+    setSavingEdit(true);
+    try {
+      await api.updatePuerta(editingPuerta.sku_puerta, editFormData);
+      setEditingPuerta(null);
+      fetchPuertas();
+    } catch (err) {
+      alert('Error al actualizar puerta: ' + err.message);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   const filteredPuertas = puertas.filter((p) => {
     const s = search.toLowerCase();
     return (
@@ -95,7 +130,7 @@ export function PuertasView() {
               Agenda de Puertas en Producción
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              Control de especificaciones técnicas, avance y asignación de materiales por taller
+              CRUD Completo: Crear, Editar Estado y Especificaciones de Fabricación por Taller
             </p>
           </div>
 
@@ -138,16 +173,25 @@ export function PuertasView() {
             return (
               <div
                 key={idx}
-                className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl hover:border-slate-700 transition-all flex flex-col justify-between"
+                className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl hover:border-slate-700 transition-all flex flex-col justify-between group"
               >
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <span className="font-mono font-bold text-base text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg">
                       {p.sku_puerta}
                     </span>
-                    <Badge variant={isDone ? 'success' : 'warning'}>
-                      {p.estado || 'En Proceso'}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={isDone ? 'success' : 'warning'}>
+                        {p.estado || 'En Proceso'}
+                      </Badge>
+                      <button
+                        onClick={() => openEditModal(p)}
+                        className="p-1 text-slate-400 hover:text-amber-400 bg-slate-800 hover:bg-slate-700 rounded-md transition-colors cursor-pointer border border-slate-700"
+                        title="Editar puerta"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   <h3 className="text-sm font-bold text-slate-100 truncate" title={p.cliente}>
@@ -187,7 +231,7 @@ export function PuertasView() {
         )}
       </div>
 
-      {/* Modal Nueva Puerta */}
+      {/* Modal Nueva Puerta (Create) */}
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
@@ -302,6 +346,144 @@ export function PuertasView() {
               className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 cursor-pointer"
             >
               {saving ? 'Guardando...' : 'Guardar Puerta'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal Editar Puerta (Update) */}
+      <Modal
+        isOpen={Boolean(editingPuerta)}
+        onClose={() => setEditingPuerta(null)}
+        title={`Editar Puerta — ${editingPuerta?.sku_puerta}`}
+        maxWidth="max-w-xl"
+      >
+        <form onSubmit={handleUpdatePuerta} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Cliente
+              </label>
+              <input
+                type="text"
+                required
+                value={editFormData.cliente || ''}
+                onChange={(e) => setEditFormData({ ...editFormData, cliente: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Estado
+              </label>
+              <select
+                value={editFormData.estado || 'En Proceso'}
+                onChange={(e) => setEditFormData({ ...editFormData, estado: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+              >
+                <option value="Pendiente">Pendiente</option>
+                <option value="En Proceso">En Proceso</option>
+                <option value="Terminada">Terminada</option>
+                <option value="Entregada">Entregada</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Modelo
+              </label>
+              <input
+                type="text"
+                value={editFormData.modelo || ''}
+                onChange={(e) => setEditFormData({ ...editFormData, modelo: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Taller
+              </label>
+              <select
+                value={editFormData.taller || 'Taller 1'}
+                onChange={(e) => setEditFormData({ ...editFormData, taller: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+              >
+                <option value="Taller 1">Taller 1</option>
+                <option value="Taller 2">Taller 2</option>
+                <option value="Taller 3">Taller 3</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Medidas
+              </label>
+              <input
+                type="text"
+                value={editFormData.medidas || ''}
+                onChange={(e) => setEditFormData({ ...editFormData, medidas: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Color
+              </label>
+              <input
+                type="text"
+                value={editFormData.color || ''}
+                onChange={(e) => setEditFormData({ ...editFormData, color: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Unidades
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={editFormData.unidades ?? 1}
+                onChange={(e) => setEditFormData({ ...editFormData, unidades: Number(e.target.value) })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">
+              Notas Técnicas
+            </label>
+            <input
+              type="text"
+              value={editFormData.notas_tecnicas || ''}
+              onChange={(e) => setEditFormData({ ...editFormData, notas_tecnicas: e.target.value })}
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+            />
+          </div>
+
+          <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => setEditingPuerta(null)}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={savingEdit}
+              className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 cursor-pointer"
+            >
+              {savingEdit ? 'Actualizando...' : 'Actualizar Puerta en Sheets'}
             </button>
           </div>
         </form>
