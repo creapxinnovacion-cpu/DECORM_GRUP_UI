@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
-import '../models/user_model.dart';
 import '../models/articulo_model.dart';
 import '../models/movimiento_model.dart';
 import '../models/prestamo_model.dart';

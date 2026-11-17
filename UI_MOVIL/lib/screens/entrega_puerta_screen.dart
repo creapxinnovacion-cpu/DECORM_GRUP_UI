@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/bodega_provider.dart';
 import '../models/puerta_model.dart';
-import '../models/articulo_model.dart';
 import '../config/theme.dart';
 
 class EntregaPuertaScreen extends StatefulWidget {

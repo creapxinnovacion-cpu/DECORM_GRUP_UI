@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/bodega_provider.dart';
 import '../models/prestamo_model.dart';
-import '../models/articulo_model.dart';
 import '../config/theme.dart';
 
 class PrestamosScreen extends StatefulWidget {
