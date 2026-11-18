@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/bodega_provider.dart';
+import '../models/articulo_model.dart';
 import '../config/theme.dart';
+import '../config/constants.dart';
+import '../widgets/sku_picker_dialog.dart';
 
 class ComprasScreen extends StatefulWidget {
   const ComprasScreen({super.key});
@@ -23,7 +26,7 @@ class _ComprasScreenState extends State<ComprasScreen> {
     final precioController = TextEditingController(text: '0.00');
     final dteController = TextEditingController();
     String tipoDte = 'CCF';
-    String taller = 'Taller 1';
+    String taller = 'Santa Ana';
     bool isSaving = false;
 
     showModalBottomSheet(
@@ -35,6 +38,21 @@ class _ComprasScreenState extends State<ComprasScreen> {
       ),
       builder: (ctx) {
         return StatefulBuilder(builder: (context, setModalState) {
+          final selectedArt = selectedSku != null
+              ? articulos.firstWhere((a) => a.sku == selectedSku,
+                  orElse: () => ArticuloModel(
+                      sku: selectedSku!,
+                      descripcion: '',
+                      categoria: '',
+                      unidad: '',
+                      stockInicial: 0,
+                      stockActual: 0,
+                      stockMinimo: 0,
+                      pmp: 0,
+                      valorInventario: 0,
+                      estado: ''))
+              : null;
+
           return Padding(
             padding: EdgeInsets.only(
               left: 20,
@@ -57,24 +75,74 @@ class _ComprasScreenState extends State<ComprasScreen> {
                   ),
                   const SizedBox(height: 14),
 
-                  DropdownButtonFormField<String>(
-                    initialValue: selectedSku,
-                    isExpanded: true,
-                    dropdownColor: DecormTheme.cardDark,
-                    decoration: const InputDecoration(labelText: 'SKU Catálogo'),
-                    items: articulos.map((a) {
-                      return DropdownMenuItem(
-                        value: a.sku,
-                        child: Text('${a.sku} — ${a.descripcion}', overflow: TextOverflow.ellipsis),
+                  // Searchable SKU Picker
+                  InkWell(
+                    onTap: () async {
+                      final picked = await SkuPickerDialog.show(
+                        context,
+                        articulos: articulos,
+                        initialSku: selectedSku,
                       );
-                    }).toList(),
-                    onChanged: (val) => setModalState(() => selectedSku = val),
+                      if (picked != null) {
+                        setModalState(() => selectedSku = picked.sku);
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: DecormTheme.cardDark,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: selectedSku != null
+                              ? DecormTheme.statusInfo
+                              : DecormTheme.cardBorder,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.search, color: DecormTheme.statusInfo, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              selectedArt != null && selectedArt.descripcion.isNotEmpty
+                                  ? '${selectedArt.sku} — ${selectedArt.descripcion}'
+                                  : (selectedSku ?? 'Toca para buscar SKU o palabra clave...'),
+                              style: TextStyle(
+                                color: selectedSku != null ? Colors.white : Colors.white38,
+                                fontSize: 13,
+                                fontWeight: selectedSku != null ? FontWeight.w600 : FontWeight.normal,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const Icon(Icons.arrow_drop_down, color: Colors.white54),
+                        ],
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
 
-                  TextField(
-                    controller: provController,
-                    decoration: const InputDecoration(labelText: 'Proveedor', hintText: 'FREUND / EPA / VIDRI'),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: provController,
+                          decoration: const InputDecoration(labelText: 'Proveedor', hintText: 'FREUND / EPA / VIDRI'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: taller,
+                          dropdownColor: DecormTheme.cardDark,
+                          decoration: const InputDecoration(labelText: 'Taller Destino'),
+                          items: AppConstants.talleres.map((t) {
+                            return DropdownMenuItem(value: t, child: Text(t, style: const TextStyle(fontSize: 12)));
+                          }).toList(),
+                          onChanged: (val) => setModalState(() => taller = val!),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
 

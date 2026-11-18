@@ -927,7 +927,16 @@ function handleDashboardGet_(params, user) {
 
   try {
     let dirty = false;
-    if (params && params.clave_mes) { sh.getRange('B3').setValue(Number(params.clave_mes)); dirty = true; }
+    if (params && params.clave_mes) {
+      let cm = params.clave_mes;
+      if (typeof cm === 'string' && cm.includes('-')) {
+        cm = Number(cm.replace(/-/g, ''));
+      } else {
+        cm = Number(cm) || cm;
+      }
+      sh.getRange('B3').setValue(cm);
+      dirty = true;
+    }
     if (params && params.taller) { sh.getRange('D3').setValue(String(params.taller)); dirty = true; }
     if (params && params.lunes_semana) { sh.getRange('F3').setValue(coerceValue_(params.lunes_semana, 'date')); dirty = true; }
     if (params && params.tolerancia !== undefined) { sh.getRange('H3').setValue(Number(params.tolerancia)); dirty = true; }

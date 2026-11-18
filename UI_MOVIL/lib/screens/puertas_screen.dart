@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../providers/bodega_provider.dart';
 import '../models/puerta_model.dart';
 import '../config/theme.dart';
+import '../config/constants.dart';
 import 'entrega_puerta_screen.dart';
 
 class PuertasScreen extends StatefulWidget {
@@ -23,7 +24,7 @@ class _PuertasScreenState extends State<PuertasScreen> {
     final modeloController = TextEditingController(text: 'Puerta Principal Enchapada');
     final medidasController = TextEditingController(text: '0.90 x 2.10 m');
     final colorController = TextEditingController(text: 'Nogal');
-    String taller = 'Taller 1';
+    String taller = 'Santa Ana';
     String estado = 'En Proceso';
     bool isSaving = false;
 
@@ -75,11 +76,9 @@ class _PuertasScreenState extends State<PuertasScreen> {
                           initialValue: taller,
                           dropdownColor: DecormTheme.cardDark,
                           decoration: const InputDecoration(labelText: 'Taller'),
-                          items: const [
-                            DropdownMenuItem(value: 'Taller 1', child: Text('Taller 1')),
-                            DropdownMenuItem(value: 'Taller 2', child: Text('Taller 2')),
-                            DropdownMenuItem(value: 'Taller 3', child: Text('Taller 3')),
-                          ],
+                          items: AppConstants.talleres.map((t) {
+                            return DropdownMenuItem(value: t, child: Text(t));
+                          }).toList(),
                           onChanged: (val) => setModalState(() => taller = val!),
                         ),
                       ),
@@ -204,11 +203,9 @@ class _PuertasScreenState extends State<PuertasScreen> {
                     initialValue: taller,
                     dropdownColor: DecormTheme.cardDark,
                     decoration: const InputDecoration(labelText: 'Taller Asignado'),
-                    items: const [
-                      DropdownMenuItem(value: 'Taller 1', child: Text('Taller 1')),
-                      DropdownMenuItem(value: 'Taller 2', child: Text('Taller 2')),
-                      DropdownMenuItem(value: 'Taller 3', child: Text('Taller 3')),
-                    ],
+                    items: AppConstants.talleres.map((t) {
+                      return DropdownMenuItem(value: t, child: Text(t));
+                    }).toList(),
                     onChanged: (val) => setDialogState(() => taller = val!),
                   ),
                   const SizedBox(height: 10),

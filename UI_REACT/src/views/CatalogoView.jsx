@@ -17,6 +17,7 @@ import {
 import { api } from '../services/api';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
+import { CATEGORIAS, UNIDADES, PROVEEDORES, FAMILIAS_PREFIJOS } from '../config/constants';
 
 export function CatalogoView() {
   const [loading, setLoading] = useState(true);
@@ -82,17 +83,53 @@ export function CatalogoView() {
     }
   };
 
-  const handleNextSku = async () => {
+  const handleNextSku = async (targetPrefix = prefijo) => {
     setGeneratingSku(true);
+    const p = targetPrefix || 'CON';
     try {
-      const res = await api.getNextSku(prefijo);
-      setNewSku(res.formatted);
+      // Find maximum numeric suffix among all existing items with this prefix
+      const regex = new RegExp(`^${p}-(\\d+)$`, 'i');
+      let maxNum = 0;
+      items.forEach((it) => {
+        if (it.sku) {
+          const m = String(it.sku).trim().match(regex);
+          if (m) {
+            const num = parseInt(m[1], 10);
+            if (!isNaN(num) && num > maxNum) {
+              maxNum = num;
+            }
+          }
+        }
+      });
+
+      let candidate = maxNum + 1;
+      try {
+        const res = await api.getNextSku(p);
+        if (res && res.formatted) {
+          const bm = String(res.formatted).match(regex);
+          if (bm) {
+            const bNum = parseInt(bm[1], 10);
+            if (bNum > candidate) candidate = bNum;
+          }
+        }
+      } catch (e) {
+        // use candidate based on items
+      }
+
+      const formatted = `${p}-${String(candidate).padStart(3, '0')}`;
+      setNewSku(formatted);
+      return formatted;
     } catch (err) {
       console.error('Error al generar correlativo:', err);
-      setNewSku(`${prefijo}-${Math.floor(100 + Math.random() * 900)}`);
+      setNewSku(`${p}-001`);
     } finally {
       setGeneratingSku(false);
     }
+  };
+
+  const openCreateModal = () => {
+    setShowCreateModal(true);
+    handleNextSku(prefijo);
   };
 
   const handleCreateArticle = async (e) => {
@@ -149,15 +186,7 @@ export function CatalogoView() {
     }
   };
 
-  const categories = [
-    'Todas',
-    'Herrajes',
-    'Pinturas',
-    'Lijas',
-    'Selladores y Silicones',
-    'Consumibles',
-    'Equipos',
-  ];
+  const categories = ['Todas', ...CATEGORIAS];
 
   const filteredItems = items.filter((item) => {
     const matchSearch =
@@ -187,10 +216,7 @@ export function CatalogoView() {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => {
-                setShowCreateModal(true);
-                handleNextSku();
-              }}
+              onClick={openCreateModal}
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
@@ -437,25 +463,29 @@ export function CatalogoView() {
               <select
                 value={prefijo}
                 onChange={(e) => {
-                  setPrefijo(e.target.value);
+                  const newP = e.target.value;
+                  setPrefijo(newP);
+                  handleNextSku(newP);
                   const catMap = {
-                    CON: 'Consumibles',
-                    HER: 'Herrajes',
-                    PIN: 'Pinturas',
-                    ABR: 'Lijas',
-                    SEL: 'Selladores y Silicones',
-                    EQU: 'Equipos',
+                    ABR: 'Abrasivos',
+                    CON: 'Consumibles y EPP',
+                    EQU: 'Equipos y herramientas',
+                    HER: 'Herrajes y accesorios',
+                    MET: 'Metal y estructura',
+                    PIN: 'Pintura y recubrimientos',
+                    SEL: 'Selladores y adhesivos',
+                    VID: 'Vidrio',
+                    LIV: 'Construcción liviana',
                   };
-                  setFormValues({ ...formValues, categoria: catMap[e.target.value] || 'Consumibles' });
+                  setFormValues({ ...formValues, categoria: catMap[newP] || 'Consumibles y EPP' });
                 }}
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
               >
-                <option value="CON">CON — Consumibles</option>
-                <option value="HER">HER — Herrajes</option>
-                <option value="PIN">PIN — Pinturas</option>
-                <option value="ABR">ABR — Lijas y Abrasivos</option>
-                <option value="SEL">SEL — Selladores y Silicones</option>
-                <option value="EQU">EQU — Equipos y Herramientas</option>
+                {FAMILIAS_PREFIJOS.map((f) => (
+                  <option key={f.prefix} value={f.prefix}>
+                    {f.label}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -466,7 +496,7 @@ export function CatalogoView() {
                 </label>
                 <button
                   type="button"
-                  onClick={handleNextSku}
+                  onClick={() => handleNextSku(prefijo)}
                   disabled={generatingSku}
                   className="text-[11px] text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
                 >
@@ -478,7 +508,7 @@ export function CatalogoView() {
                 required
                 value={newSku}
                 onChange={(e) => setNewSku(e.target.value.toUpperCase())}
-                placeholder="Ej: CON-021"
+                placeholder="Ej: CON-020"
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold text-amber-400 focus:outline-hidden focus:border-amber-500"
               />
             </div>
@@ -508,13 +538,11 @@ export function CatalogoView() {
                 onChange={(e) => setFormValues({ ...formValues, unidad: e.target.value })}
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
               >
-                <option value="Unidad">Unidad</option>
-                <option value="Pliego">Pliego</option>
-                <option value="Galón">Galón</option>
-                <option value="Tubo">Tubo</option>
-                <option value="Par">Par</option>
-                <option value="Rollo">Rollo</option>
-                <option value="Caja">Caja</option>
+                {UNIDADES.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -522,13 +550,18 @@ export function CatalogoView() {
               <label className="block text-xs font-semibold text-slate-300 mb-1">
                 Proveedor Preferido
               </label>
-              <input
-                type="text"
+              <select
                 value={formValues.proveedor_pref}
                 onChange={(e) => setFormValues({ ...formValues, proveedor_pref: e.target.value })}
-                placeholder="Ej: FREUND / EPA"
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
-              />
+              >
+                <option value="">-- Seleccionar Proveedor --</option>
+                {PROVEEDORES.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -616,16 +649,15 @@ export function CatalogoView() {
                 Categoría
               </label>
               <select
-                value={editValues.categoria || 'Consumibles'}
+                value={editValues.categoria || 'Consumibles y EPP'}
                 onChange={(e) => setEditValues({ ...editValues, categoria: e.target.value })}
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
               >
-                <option value="Consumibles">Consumibles</option>
-                <option value="Herrajes">Herrajes</option>
-                <option value="Pinturas">Pinturas</option>
-                <option value="Lijas">Lijas</option>
-                <option value="Selladores y Silicones">Selladores y Silicones</option>
-                <option value="Equipos">Equipos</option>
+                {CATEGORIAS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -634,17 +666,15 @@ export function CatalogoView() {
                 Unidad
               </label>
               <select
-                value={editValues.unidad || 'Unidad'}
+                value={editValues.unidad || 'unidad'}
                 onChange={(e) => setEditValues({ ...editValues, unidad: e.target.value })}
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
               >
-                <option value="Unidad">Unidad</option>
-                <option value="Pliego">Pliego</option>
-                <option value="Galón">Galón</option>
-                <option value="Tubo">Tubo</option>
-                <option value="Par">Par</option>
-                <option value="Rollo">Rollo</option>
-                <option value="Caja">Caja</option>
+                {UNIDADES.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

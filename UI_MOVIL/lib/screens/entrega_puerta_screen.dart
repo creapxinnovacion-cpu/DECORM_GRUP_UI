@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/bodega_provider.dart';
 import '../models/puerta_model.dart';
+import '../models/articulo_model.dart';
 import '../config/theme.dart';
+import '../widgets/sku_picker_dialog.dart';
 
 class EntregaPuertaScreen extends StatefulWidget {
   const EntregaPuertaScreen({super.key});
@@ -122,35 +124,58 @@ class _EntregaPuertaScreenState extends State<EntregaPuertaScreen> {
 
               // Insumo selector
               const Text(
-                'Insumo a Entregar',
+                'Insumo a Entregar (Buscador por SKU o palabra clave)',
                 style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                     color: DecormTheme.textSecondary),
               ),
               const SizedBox(height: 6),
-              DropdownButtonFormField<String>(
-                value: _selectedSkuInsumo,
-                isExpanded: true,
-                dropdownColor: DecormTheme.cardDark,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.inventory_2_outlined,
-                      color: DecormTheme.primaryAmber),
-                  hintText: '-- Seleccionar Insumo --',
-                ),
-                items: articulos.map((a) {
-                  return DropdownMenuItem<String>(
-                    value: a.sku,
-                    child: Text(
-                      '${a.sku} — ${a.descripcion} (Stock: ${a.stockActual})',
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12),
-                    ),
+              InkWell(
+                onTap: () async {
+                  final picked = await SkuPickerDialog.show(
+                    context,
+                    articulos: articulos,
+                    initialSku: _selectedSkuInsumo,
                   );
-                }).toList(),
-                onChanged: (val) => setState(() => _selectedSkuInsumo = val),
-                validator: (val) =>
-                    val == null ? 'Debe seleccionar un insumo' : null,
+                  if (picked != null) {
+                    setState(() => _selectedSkuInsumo = picked.sku);
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: DecormTheme.cardDark,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _selectedSkuInsumo != null
+                          ? DecormTheme.primaryAmber
+                          : DecormTheme.cardBorder,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.search, color: DecormTheme.primaryAmber, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _selectedSkuInsumo != null
+                              ? '$_selectedSkuInsumo — ${articulos.firstWhere((a) => a.sku == _selectedSkuInsumo, orElse: () => ArticuloModel(sku: _selectedSkuInsumo!, descripcion: '', categoria: '', unidad: '', stockInicial: 0, stockActual: 0, stockMinimo: 0, pmp: 0, valorInventario: 0, estado: '')).descripcion}'
+                              : 'Toca para buscar por SKU o palabra clave...',
+                          style: TextStyle(
+                            color: _selectedSkuInsumo != null ? Colors.white : Colors.white38,
+                            fontSize: 13,
+                            fontWeight: _selectedSkuInsumo != null
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const Icon(Icons.arrow_drop_down, color: Colors.white54),
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(height: 16),
 
@@ -222,6 +247,15 @@ class _EntregaPuertaScreenState extends State<EntregaPuertaScreen> {
   }
 
   void _confirmarEntrega() async {
+    if (_selectedSkuInsumo == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor seleccione un insumo a entregar.'),
+          backgroundColor: DecormTheme.statusDanger,
+        ),
+      );
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
 

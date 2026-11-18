@@ -18,6 +18,8 @@ import {
 import { api } from '../services/api';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
+import SearchableSkuSelect from '../components/SearchableSkuSelect';
+import { TALLERES, PROVEEDORES } from '../config/constants';
 
 export function ComprasView() {
   const [loading, setLoading] = useState(true);
@@ -35,7 +37,7 @@ export function ComprasView() {
     cant_pedida: 1,
     cant_recibida: 1,
     precio_unit_pagado: 0,
-    taller_destino: 'Taller 1',
+    taller_destino: 'Santa Ana',
     tipo_dte: 'CCF',
     n_dte: '',
     observaciones: '',
@@ -53,7 +55,7 @@ export function ComprasView() {
   const [dteError, setDteError] = useState(null);
   const [importingDte, setImportingDte] = useState(false);
   const [selectedSkuForDte, setSelectedSkuForDte] = useState('');
-  const [dteTaller, setDteTaller] = useState('Taller 1');
+  const [dteTaller, setDteTaller] = useState('Santa Ana');
 
   const fetchCompras = async () => {
     setLoading(true);
@@ -90,7 +92,7 @@ export function ComprasView() {
         cant_pedida: 1,
         cant_recibida: 1,
         precio_unit_pagado: 0,
-        taller_destino: 'Taller 1',
+        taller_destino: 'Santa Ana',
         tipo_dte: 'CCF',
         n_dte: '',
         observaciones: '',
@@ -368,32 +370,31 @@ export function ComprasView() {
               <input
                 type="text"
                 required
-                placeholder="Ej: FREUND, EPA, VIDRI"
+                list="proveedores_list"
+                placeholder="Seleccionar o escribir proveedor"
                 value={formData.proveedor}
                 onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })}
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-sky-500"
               />
+              <datalist id="proveedores_list">
+                {PROVEEDORES.map((p) => (
+                  <option key={p} value={p} />
+                ))}
+              </datalist>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">
-                SKU del Catálogo
+                SKU del Catálogo (Búsqueda en tiempo real)
               </label>
-              <select
-                required
+              <SearchableSkuSelect
+                items={catalogoItems}
                 value={formData.sku}
-                onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-sky-500 font-mono"
-              >
-                <option value="">-- Seleccionar SKU --</option>
-                {catalogoItems.map((item) => (
-                  <option key={item.sku} value={item.sku}>
-                    {item.sku} — {item.descripcion}
-                  </option>
-                ))}
-              </select>
+                onChange={(sku) => setFormData({ ...formData, sku })}
+                required
+              />
             </div>
 
             <div>
@@ -405,10 +406,11 @@ export function ComprasView() {
                 onChange={(e) => setFormData({ ...formData, taller_destino: e.target.value })}
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-sky-500"
               >
-                <option value="Taller 1">Taller 1</option>
-                <option value="Taller 2">Taller 2</option>
-                <option value="Taller 3">Taller 3</option>
-                <option value="Bodega Central">Bodega Central</option>
+                {TALLERES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -545,20 +547,14 @@ export function ComprasView() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">
-                SKU
+                SKU (Buscador rápido)
               </label>
-              <select
+              <SearchableSkuSelect
+                items={catalogoItems}
+                value={editFormData.sku}
+                onChange={(sku) => setEditFormData({ ...editFormData, sku })}
                 required
-                value={editFormData.sku || ''}
-                onChange={(e) => setEditFormData({ ...editFormData, sku: e.target.value })}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-sky-500 font-mono"
-              >
-                {catalogoItems.map((item) => (
-                  <option key={item.sku} value={item.sku}>
-                    {item.sku} — {item.descripcion}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             <div>
@@ -566,14 +562,15 @@ export function ComprasView() {
                 Taller Destino
               </label>
               <select
-                value={editFormData.taller_destino || 'Taller 1'}
+                value={editFormData.taller_destino || 'Santa Ana'}
                 onChange={(e) => setEditFormData({ ...editFormData, taller_destino: e.target.value })}
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-sky-500"
               >
-                <option value="Taller 1">Taller 1</option>
-                <option value="Taller 2">Taller 2</option>
-                <option value="Taller 3">Taller 3</option>
-                <option value="Bodega Central">Bodega Central</option>
+                {TALLERES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -730,20 +727,14 @@ export function ComprasView() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800/80">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                    Asignar SKU de Catálogo por Defecto:
+                    Asignar SKU de Catálogo por Defecto (Opcional):
                   </label>
-                  <select
+                  <SearchableSkuSelect
+                    items={catalogoItems}
                     value={selectedSkuForDte}
-                    onChange={(e) => setSelectedSkuForDte(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 font-mono"
-                  >
-                    <option value="">-- Mapear automáticamente por descripción --</option>
-                    {catalogoItems.map((it) => (
-                      <option key={it.sku} value={it.sku}>
-                        {it.sku} — {it.descripcion}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(sku) => setSelectedSkuForDte(sku)}
+                    placeholder="Mapear automáticamente o buscar SKU..."
+                  />
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-300 mb-1">
@@ -754,10 +745,11 @@ export function ComprasView() {
                     onChange={(e) => setDteTaller(e.target.value)}
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100"
                   >
-                    <option value="Taller 1">Taller 1</option>
-                    <option value="Taller 2">Taller 2</option>
-                    <option value="Taller 3">Taller 3</option>
-                    <option value="Bodega Central">Bodega Central</option>
+                    {TALLERES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

@@ -18,6 +18,8 @@ import {
 import { api } from '../services/api';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
+import SearchableSkuSelect from '../components/SearchableSkuSelect';
+import { TALLERES, OPERADORES } from '../config/constants';
 
 export function MovimientosView() {
   const [loading, setLoading] = useState(true);
@@ -34,7 +36,7 @@ export function MovimientosView() {
     tipo: 'Salida',
     sku: '',
     cantidad: 1,
-    taller_destino: 'Taller 1',
+    taller_destino: 'Santa Ana',
     entregado_a: '',
     observaciones: '',
   });
@@ -90,7 +92,7 @@ export function MovimientosView() {
         tipo: 'Salida',
         sku: '',
         cantidad: 1,
-        taller_destino: 'Taller 1',
+        taller_destino: 'Santa Ana',
         entregado_a: '',
         observaciones: '',
       });
@@ -380,21 +382,14 @@ export function MovimientosView() {
 
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">
-              SKU del Insumo
+              SKU del Insumo (Escribe SKU o palabra clave: lija, disco, metro...)
             </label>
-            <select
-              required
+            <SearchableSkuSelect
+              items={catalogoItems}
               value={formData.sku}
-              onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500 font-mono"
-            >
-              <option value="">-- Seleccionar Insumo --</option>
-              {catalogoItems.map((item) => (
-                <option key={item.sku} value={item.sku}>
-                  {item.sku} — {item.descripcion} (Stock: {item.stock_actual ?? 0})
-                </option>
-              ))}
-            </select>
+              onChange={(sku) => setFormData({ ...formData, sku })}
+              required
+            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -422,27 +417,33 @@ export function MovimientosView() {
                 onChange={(e) => setFormData({ ...formData, taller_destino: e.target.value })}
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
               >
-                <option value="Taller 1">Taller 1</option>
-                <option value="Taller 2">Taller 2</option>
-                <option value="Taller 3">Taller 3</option>
-                <option value="Pintura">Área de Pintura</option>
-                <option value="Armado">Área de Armado</option>
+                {TALLERES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">
-              Entregado a (Persona Responsable)
+              Entregado a (Persona Responsable / Operador)
             </label>
             <input
               type="text"
               required
-              placeholder="Nombre del operario o encargado"
+              list="operadores_list"
+              placeholder="Seleccionar o escribir operador"
               value={formData.entregado_a}
               onChange={(e) => setFormData({ ...formData, entregado_a: e.target.value })}
               className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
             />
+            <datalist id="operadores_list">
+              {OPERADORES.map((op) => (
+                <option key={op} value={op} />
+              ))}
+            </datalist>
           </div>
 
           <div>
@@ -516,25 +517,19 @@ export function MovimientosView() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                SKU
-              </label>
-              <select
-                required
-                value={editFormData.sku || ''}
-                onChange={(e) => setEditFormData({ ...editFormData, sku: e.target.value })}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500 font-mono"
-              >
-                {catalogoItems.map((item) => (
-                  <option key={item.sku} value={item.sku}>
-                    {item.sku} — {item.descripcion}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">
+              SKU del Insumo (Buscador rápido)
+            </label>
+            <SearchableSkuSelect
+              items={catalogoItems}
+              value={editFormData.sku}
+              onChange={(sku) => setEditFormData({ ...editFormData, sku })}
+              required
+            />
+          </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">
                 Cantidad
@@ -549,38 +544,37 @@ export function MovimientosView() {
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500 font-bold"
               />
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">
                 Taller / Destino
               </label>
               <select
-                value={editFormData.taller_destino || 'Taller 1'}
+                value={editFormData.taller_destino || 'Santa Ana'}
                 onChange={(e) => setEditFormData({ ...editFormData, taller_destino: e.target.value })}
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
               >
-                <option value="Taller 1">Taller 1</option>
-                <option value="Taller 2">Taller 2</option>
-                <option value="Taller 3">Taller 3</option>
-                <option value="Pintura">Área de Pintura</option>
-                <option value="Armado">Área de Armado</option>
+                {TALLERES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
               </select>
             </div>
+          </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Entregado a
-              </label>
-              <input
-                type="text"
-                required
-                value={editFormData.entregado_a || ''}
-                onChange={(e) => setEditFormData({ ...editFormData, entregado_a: e.target.value })}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">
+              Entregado a (Operador)
+            </label>
+            <input
+              type="text"
+              required
+              list="operadores_list"
+              value={editFormData.entregado_a || ''}
+              onChange={(e) => setEditFormData({ ...editFormData, entregado_a: e.target.value })}
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
+            />
           </div>
 
           <div>
@@ -643,21 +637,14 @@ export function MovimientosView() {
 
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">
-              SKU del Insumo a Entregar
+              SKU del Insumo a Entregar (Escribe SKU o palabra clave)
             </label>
-            <select
-              required
+            <SearchableSkuSelect
+              items={catalogoItems}
               value={puertaFormData.sku}
-              onChange={(e) => setPuertaFormData({ ...puertaFormData, sku: e.target.value })}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500 font-mono"
-            >
-              <option value="">-- Seleccionar Insumo --</option>
-              {catalogoItems.map((item) => (
-                <option key={item.sku} value={item.sku}>
-                  {item.sku} — {item.descripcion} (Stock: {item.stock_actual ?? 0})
-                </option>
-              ))}
-            </select>
+              onChange={(sku) => setPuertaFormData({ ...puertaFormData, sku })}
+              required
+            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

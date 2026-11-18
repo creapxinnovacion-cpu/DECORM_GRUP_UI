@@ -5,6 +5,8 @@ import '../providers/bodega_provider.dart';
 import '../models/articulo_model.dart';
 import '../models/movimiento_model.dart';
 import '../config/theme.dart';
+import '../config/constants.dart';
+import '../widgets/sku_picker_dialog.dart';
 
 class SalidasScreen extends StatefulWidget {
   const SalidasScreen({super.key});
@@ -17,7 +19,7 @@ class _SalidasScreenState extends State<SalidasScreen> with SingleTickerProvider
   late TabController _tabController;
   final _formKey = GlobalKey<FormState>();
   String? _selectedSku;
-  String _tallerDestino = 'Taller 1';
+  String _tallerDestino = 'Santa Ana';
   final _cantidadController = TextEditingController(text: '1');
   final _entregadoAController = TextEditingController();
   final _observacionesController = TextEditingController();
@@ -210,28 +212,51 @@ class _SalidasScreenState extends State<SalidasScreen> with SingleTickerProvider
                         color: DecormTheme.textSecondary),
                   ),
                   const SizedBox(height: 6),
-                  DropdownButtonFormField<String>(
-                    initialValue: _selectedSku,
-                    isExpanded: true,
-                    dropdownColor: DecormTheme.cardDark,
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.inventory_2_outlined,
-                          color: DecormTheme.primaryAmber),
-                      hintText: '-- Seleccionar SKU --',
-                    ),
-                    items: articulos.map((a) {
-                      return DropdownMenuItem<String>(
-                        value: a.sku,
-                        child: Text(
-                          '${a.sku} — ${a.descripcion}',
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12),
-                        ),
+                  InkWell(
+                    onTap: () async {
+                      final picked = await SkuPickerDialog.show(
+                        context,
+                        articulos: articulos,
+                        initialSku: _selectedSku,
                       );
-                    }).toList(),
-                    onChanged: (val) => setState(() => _selectedSku = val),
-                    validator: (val) =>
-                        val == null ? 'Debe seleccionar un insumo' : null,
+                      if (picked != null) {
+                        setState(() => _selectedSku = picked.sku);
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: DecormTheme.cardDark,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _selectedSku != null
+                              ? DecormTheme.primaryAmber
+                              : DecormTheme.cardBorder,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.search, color: DecormTheme.primaryAmber, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              selectedArticulo != null
+                                  ? '${selectedArticulo.sku} — ${selectedArticulo.descripcion}'
+                                  : 'Toca para buscar por SKU o palabra clave...',
+                              style: TextStyle(
+                                color: selectedArticulo != null ? Colors.white : Colors.white38,
+                                fontSize: 13,
+                                fontWeight: selectedArticulo != null
+                                    ? FontWeight.w600
+                                    : FontWeight.normal,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const Icon(Icons.arrow_drop_down, color: Colors.white54),
+                        ],
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
 
@@ -312,15 +337,9 @@ class _SalidasScreenState extends State<SalidasScreen> with SingleTickerProvider
                       prefixIcon: Icon(Icons.location_on_outlined,
                           color: DecormTheme.primaryAmber),
                     ),
-                    items: const [
-                      DropdownMenuItem(value: 'Taller 1', child: Text('Taller 1')),
-                      DropdownMenuItem(value: 'Taller 2', child: Text('Taller 2')),
-                      DropdownMenuItem(value: 'Taller 3', child: Text('Taller 3')),
-                      DropdownMenuItem(
-                          value: 'Área de Pintura', child: Text('Área de Pintura')),
-                      DropdownMenuItem(
-                          value: 'Área de Armado', child: Text('Área de Armado')),
-                    ],
+                    items: AppConstants.talleres.map((t) {
+                      return DropdownMenuItem(value: t, child: Text(t));
+                    }).toList(),
                     onChanged: (val) => setState(() => _tallerDestino = val!),
                   ),
                   const SizedBox(height: 16),
@@ -493,6 +512,15 @@ class _SalidasScreenState extends State<SalidasScreen> with SingleTickerProvider
   }
 
   void _guardarSalida() async {
+    if (_selectedSku == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor seleccione un insumo.'),
+          backgroundColor: DecormTheme.statusDanger,
+        ),
+      );
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
 

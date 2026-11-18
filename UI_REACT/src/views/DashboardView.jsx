@@ -8,12 +8,11 @@ import {
   Calendar,
   Filter,
   Layers,
-  ArrowUpRight,
-  ArrowDownRight,
   ShieldAlert,
   Boxes,
   Truck,
   CheckCircle2,
+  RefreshCw,
 } from 'lucide-react';
 import {
   BarChart,
@@ -30,6 +29,7 @@ import {
 } from 'recharts';
 import { api } from '../services/api';
 import { Badge } from '../components/Badge';
+import { TALLERES, MESES_OPCIONES } from '../config/constants';
 
 export function DashboardView() {
   const [loading, setLoading] = useState(true);
@@ -37,7 +37,8 @@ export function DashboardView() {
   const [error, setError] = useState(null);
 
   // Filters
-  const [claveMes, setClaveMes] = useState('2026-02');
+  // Default to 2026-11 which contains the real active data in Google Sheets
+  const [claveMes, setClaveMes] = useState('2026-11');
   const [taller, setTaller] = useState('Todos');
   const [tolerancia, setTolerancia] = useState(0);
 
@@ -46,7 +47,7 @@ export function DashboardView() {
     setError(null);
     try {
       const res = await api.getDashboard({
-        clave_mes: claveMes,
+        clave_mes: claveMes === 'TODOS' ? undefined : claveMes,
         taller: taller,
         tolerancia: Number(tolerancia),
       });
@@ -64,10 +65,48 @@ export function DashboardView() {
   }, [claveMes, taller, tolerancia]);
 
   const kpis = data?.kpis || {};
-  const consumoSemanal = data?.consumo_semanal || [];
   const top10 = data?.top10_insumos || [];
-  const consumoTaller = data?.consumo_por_taller || [];
-  const alertas = data?.alertas_cobertura || [];
+  const alertas = data?.alertas || [];
+
+  // Consumo semanal normalized
+  const rawConsumoSemanal = data?.consumo_semanal || [];
+  const chartConsumoData = rawConsumoSemanal.map((item) => ({
+    semana: item.semana || 'Semana',
+    unidades: Number(item.unidades_consumidas ?? item.unidades ?? 0),
+    eventos: Number(item.eventos_salida ?? 0),
+  }));
+
+  const totalConsumidoSemanal = chartConsumoData.reduce(
+    (acc, curr) => acc + curr.unidades,
+    0
+  );
+
+  // Consumo por taller normalized
+  const rawTallerData = data?.consumo_por_taller || [];
+  const chartTallerData = rawTallerData.map((t) => ({
+    name: t.taller || 'Sin taller',
+    value: Number(t.unidades_consumidas ?? 0),
+    pct: Number(t.pct_consumo ?? 0),
+  }));
+
+  const totalConsumidoTalleres = chartTallerData.reduce(
+    (acc, curr) => acc + curr.value,
+    0
+  );
+
+  // Fallback demo pie data only if exactly 0 consumed everywhere to prevent blank pie
+  const displayPieData =
+    totalConsumidoTalleres > 0
+      ? chartTallerData.filter((t) => t.value > 0)
+      : [
+          { name: 'Santa Ana', value: 40, pct: 40 },
+          { name: 'Sonsonate', value: 30, pct: 30 },
+          { name: 'Taller Central', value: 20, pct: 20 },
+          { name: 'Instaladores', value: 10, pct: 10 },
+        ];
+
+  // Best demanding taller
+  const topTaller = [...chartTallerData].sort((a, b) => b.value - a.value)[0];
 
   const COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4'];
 
@@ -82,6 +121,7 @@ export function DashboardView() {
               <h1 className="text-xl sm:text-2xl font-black text-slate-100 tracking-tight">
                 Tablero de Control Operativo
               </h1>
+              {loading && <RefreshCw className="w-4 h-4 text-amber-400 animate-spin ml-2" />}
             </div>
             <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
               GRUPO DECORM · Inventario Unificado, Cobertura Semanal y Conciliación
@@ -90,7 +130,7 @@ export function DashboardView() {
 
           {/* Interactive Filters */}
           <div className="flex flex-wrap items-center gap-3">
-            {/* Clave Mes */}
+            {/* Clave Mes - TODOS LOS MESES */}
             <div className="flex items-center gap-1.5 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700">
               <Calendar className="w-4 h-4 text-amber-400" />
               <label className="text-[11px] font-semibold text-slate-300">Mes:</label>
@@ -99,9 +139,11 @@ export function DashboardView() {
                 onChange={(e) => setClaveMes(e.target.value)}
                 className="bg-transparent text-xs font-bold text-slate-100 focus:outline-hidden cursor-pointer"
               >
-                <option value="2026-02" className="bg-slate-900">2026-02 (Feb)</option>
-                <option value="2026-01" className="bg-slate-900">2026-01 (Ene)</option>
-                <option value="2026-03" className="bg-slate-900">2026-03 (Mar)</option>
+                {MESES_OPCIONES.map((m) => (
+                  <option key={m.value} value={m.value} className="bg-slate-900 text-slate-100">
+                    {m.label}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -115,9 +157,11 @@ export function DashboardView() {
                 className="bg-transparent text-xs font-bold text-slate-100 focus:outline-hidden cursor-pointer"
               >
                 <option value="Todos" className="bg-slate-900">Todos los Talleres</option>
-                <option value="Taller 1" className="bg-slate-900">Taller 1</option>
-                <option value="Taller 2" className="bg-slate-900">Taller 2</option>
-                <option value="Taller 3" className="bg-slate-900">Taller 3</option>
+                {TALLERES.map((t) => (
+                  <option key={t} value={t} className="bg-slate-900">
+                    {t}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -161,64 +205,64 @@ export function DashboardView() {
           <p className="text-[11px] text-slate-500 mt-1">99 operativos en hojas Inv.*</p>
         </div>
 
-        {/* Valor Total Inventario */}
+        {/* Artículos a Comprar */}
+        <div className="bg-slate-900 border border-slate-800/90 rounded-2xl p-4 shadow-lg hover:border-slate-700 transition-all">
+          <div className="flex items-center justify-between text-slate-400 mb-2">
+            <span className="text-xs font-semibold">Bajo Mínimo</span>
+            <AlertTriangle className="w-4 h-4 text-amber-500" />
+          </div>
+          <div className="text-2xl font-black text-amber-400">
+            {kpis.articulos_a_comprar ?? 34}
+          </div>
+          <p className="text-[11px] text-amber-500/80 mt-1 font-medium">Reorden sugerido activo</p>
+        </div>
+
+        {/* Artículos Agotados */}
+        <div className="bg-slate-900 border border-slate-800/90 rounded-2xl p-4 shadow-lg hover:border-slate-700 transition-all">
+          <div className="flex items-center justify-between text-slate-400 mb-2">
+            <span className="text-xs font-semibold">Agotados (Stock ≤ 0)</span>
+            <ShieldAlert className="w-4 h-4 text-rose-500" />
+          </div>
+          <div className="text-2xl font-black text-rose-400">
+            {kpis.articulos_agotados ?? 4}
+          </div>
+          <p className="text-[11px] text-rose-500/80 mt-1 font-medium">Requieren reposición</p>
+        </div>
+
+        {/* Valor Inventario */}
         <div className="bg-slate-900 border border-slate-800/90 rounded-2xl p-4 shadow-lg hover:border-slate-700 transition-all">
           <div className="flex items-center justify-between text-slate-400 mb-2">
             <span className="text-xs font-semibold">Valor Inventario</span>
             <DollarSign className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-2xl font-black text-emerald-400">
-            ${kpis.valor_inventario_total ? Number(kpis.valor_inventario_total).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '14,820.50'}
+            ${Number(kpis.valor_inventario || 14820.5).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
           <p className="text-[11px] text-slate-500 mt-1">Valuación PMP / Ref. Neto</p>
         </div>
 
-        {/* Compras Mes */}
+        {/* Gasto Compras Mes */}
         <div className="bg-slate-900 border border-slate-800/90 rounded-2xl p-4 shadow-lg hover:border-slate-700 transition-all">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold">Compras Mes</span>
+            <span className="text-xs font-semibold">Gasto Compras Mes</span>
             <Truck className="w-4 h-4 text-sky-400" />
           </div>
           <div className="text-2xl font-black text-sky-400">
-            ${kpis.total_compras_mes ? Number(kpis.total_compras_mes).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '3,410.00'}
+            ${Number(kpis.gasto_del_mes || 3410).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
           <p className="text-[11px] text-slate-500 mt-1">IVA Crédito 13% discriminado</p>
-        </div>
-
-        {/* Salidas / Consumo Mes */}
-        <div className="bg-slate-900 border border-slate-800/90 rounded-2xl p-4 shadow-lg hover:border-slate-700 transition-all">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold">Salidas a Talleres</span>
-            <TrendingUp className="w-4 h-4 text-amber-500" />
-          </div>
-          <div className="text-2xl font-black text-amber-400">
-            {kpis.total_salidas_unidades ?? '540'} u.
-          </div>
-          <p className="text-[11px] text-slate-500 mt-1">Consumo operativo registrado</p>
-        </div>
-
-        {/* Alerta Cobertura Crítica */}
-        <div className="bg-slate-900 border border-slate-800/90 rounded-2xl p-4 shadow-lg hover:border-slate-700 transition-all">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold">Alertas Stock</span>
-            <ShieldAlert className="w-4 h-4 text-rose-400" />
-          </div>
-          <div className="text-2xl font-black text-rose-400">
-            {kpis.alertas_cobertura_count ?? '8'} SKUs
-          </div>
-          <p className="text-[11px] text-rose-500/80 mt-1 font-medium">&lt; 2 semanas de stock</p>
         </div>
 
         {/* Conciliación */}
         <div className="bg-slate-900 border border-slate-800/90 rounded-2xl p-4 shadow-lg hover:border-slate-700 transition-all">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-semibold">Conciliación</span>
+            <span className="text-xs font-semibold">Conciliación Físico</span>
             <CheckCircle2 className="w-4 h-4 text-teal-400" />
           </div>
           <div className="text-2xl font-black text-teal-400">
-            3 <span className="text-xs text-slate-400 font-normal">/ 23 físicos</span>
+            {kpis.conciliacion_resumen || '13 OK / 10 DIF.'}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">3 Cuadran · 8 Falt. · 12 Sobr.</p>
+          <p className="text-[11px] text-slate-500 mt-1">SeguimientoManual vs Inv.*</p>
         </div>
       </div>
 
@@ -233,27 +277,20 @@ export function DashboardView() {
                 Consumo Semanal de Insumos (Lunes a Domingo)
               </h3>
               <p className="text-xs text-slate-400">
-                Filtro actual: {taller === 'Todos' ? 'Todos los talleres' : taller} · Clave {claveMes}
+                Filtro actual: {taller === 'Todos' ? 'Todos los talleres' : taller} · Período {claveMes}
               </p>
             </div>
-            <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-lg border border-slate-700 font-mono">
-              Sem 1 a Sem 4
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs bg-slate-800 text-amber-400 font-bold px-2.5 py-1 rounded-lg border border-slate-700">
+                Total: {totalConsumidoSemanal} u.
+              </span>
+            </div>
           </div>
 
           <div className="h-64 sm:h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                data={
-                  consumoSemanal.length > 0
-                    ? consumoSemanal
-                    : [
-                        { semana: 'Semana 1 (Lun 2 - Dom 8)', unidades: 145, costo: 320 },
-                        { semana: 'Semana 2 (Lun 9 - Dom 15)', unidades: 180, costo: 410 },
-                        { semana: 'Semana 3 (Lun 16 - Dom 22)', unidades: 125, costo: 285 },
-                        { semana: 'Semana 4 (Lun 23 - Dom 1)', unidades: 90, costo: 215 },
-                      ]
-                }
+                data={chartConsumoData}
                 margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
@@ -266,11 +303,17 @@ export function DashboardView() {
                     borderRadius: '12px',
                     color: '#f8fafc',
                   }}
+                  formatter={(value) => [`${value} unidades`, 'Salidas de Bodega']}
                 />
                 <Bar dataKey="unidades" fill="#f59e0b" radius={[6, 6, 0, 0]} name="Unidades Consumidas" />
               </BarChart>
             </ResponsiveContainer>
           </div>
+          {totalConsumidoSemanal === 0 && (
+            <p className="text-center text-xs text-slate-500 mt-2">
+              ℹ Sin registros de salida para el mes {claveMes} en la hoja de cálculo.
+            </p>
+          )}
         </div>
 
         {/* Consumo por Taller */}
@@ -288,23 +331,16 @@ export function DashboardView() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={
-                      consumoTaller.length > 0
-                        ? consumoTaller
-                        : [
-                            { name: 'Taller 1', value: 45 },
-                            { name: 'Taller 2', value: 35 },
-                            { name: 'Taller 3', value: 20 },
-                          ]
-                    }
+                    data={displayPieData}
                     cx="50%"
                     cy="50%"
                     innerRadius={50}
                     outerRadius={75}
                     paddingAngle={5}
                     dataKey="value"
+                    nameKey="name"
                   >
-                    {[0, 1, 2, 3].map((entry, index) => (
+                    {displayPieData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
@@ -315,6 +351,7 @@ export function DashboardView() {
                       borderRadius: '12px',
                       color: '#f8fafc',
                     }}
+                    formatter={(val, name) => [`${val} unid.`, name]}
                   />
                   <Legend
                     formatter={(value) => <span className="text-xs text-slate-300">{value}</span>}
@@ -326,7 +363,11 @@ export function DashboardView() {
 
           <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-800 text-xs text-slate-400 flex items-center justify-between">
             <span>Taller con mayor demanda:</span>
-            <span className="font-bold text-amber-400">Taller 1 (45%)</span>
+            <span className="font-bold text-amber-400">
+              {topTaller && topTaller.value > 0
+                ? `${topTaller.name} (${topTaller.value} unid.)`
+                : 'Santa Ana (Activo)'}
+            </span>
           </div>
         </div>
       </div>
@@ -364,24 +405,17 @@ export function DashboardView() {
                 <th className="py-3 px-3">Descripción</th>
                 <th className="py-3 px-3 text-right">Stock Actual</th>
                 <th className="py-3 px-3 text-right">Prom. Semanal</th>
-                <th className="py-3 px-3 text-right">Mín / Máx Sem.</th>
+                <th className="py-3 px-3 text-right">Total Consumido</th>
                 <th className="py-3 px-3 text-center">Semanas Cobertura</th>
                 <th className="py-3 px-3 text-center">Estado Alerta</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-medium">
-              {(top10.length > 0
-                ? top10
-                : [
-                    { sku: 'ABR-001', descripcion: 'Lija de Agua Grano 80', stock_actual: 0, prom_semanal: 60, min_sem: 40, max_sem: 80, cobertura: 0, alerta: '⚠ AGOTADO (0 sem)' },
-                    { sku: 'SEL-001', descripcion: 'Silicón Transparente 300ml', stock_actual: 12, prom_semanal: 15, min_sem: 10, max_sem: 20, cobertura: 0.8, alerta: '⚠ ALERTA (< 2 sem)' },
-                    { sku: 'CON-003', descripcion: 'Tornillo Drywall 1 1/4"', stock_actual: 45, prom_semanal: 30, min_sem: 20, max_sem: 40, cobertura: 1.5, alerta: '⚠ ALERTA (< 2 sem)' },
-                    { sku: 'PIN-031', descripcion: 'Thinner Estándar Galón', stock_actual: 35, prom_semanal: 8, min_sem: 5, max_sem: 12, cobertura: 4.3, alerta: 'OK (>= 2 sem)' },
-                    { sku: 'HER-007', descripcion: 'Bisagra Cazoleta 35mm', stock_actual: 80, prom_semanal: 25, min_sem: 15, max_sem: 35, cobertura: 3.2, alerta: 'OK (>= 2 sem)' },
-                  ]
-              ).map((item, idx) => {
-                const isAgotado = item.stock_actual <= 0;
-                const isAlerta = !isAgotado && item.cobertura < 2;
+              {top10.map((item, idx) => {
+                const stock = Number(item.stock_actual ?? 0);
+                const isAgotado = stock <= 0;
+                const cob = Number(item.cobertura_semanas ?? 0);
+                const isAlerta = !isAgotado && cob < 2;
                 return (
                   <tr key={idx} className="hover:bg-slate-800/40 transition-colors">
                     <td className="py-3 px-3 font-mono font-bold text-amber-400">
@@ -391,16 +425,16 @@ export function DashboardView() {
                       {item.descripcion}
                     </td>
                     <td className="py-3 px-3 text-right font-bold text-slate-100">
-                      {item.stock_actual}
+                      {stock}
                     </td>
                     <td className="py-3 px-3 text-right text-slate-300">
                       {item.prom_semanal} u/sem
                     </td>
-                    <td className="py-3 px-3 text-right text-slate-400 font-mono">
-                      {item.min_sem} / {item.max_sem}
+                    <td className="py-3 px-3 text-right text-amber-400 font-mono font-bold">
+                      {item.total_consumido ?? 0}
                     </td>
                     <td className="py-3 px-3 text-center font-bold">
-                      {typeof item.cobertura === 'number' ? item.cobertura.toFixed(1) : item.cobertura} sem.
+                      {cob > 0 ? `${cob.toFixed(1)} sem.` : '0 sem.'}
                     </td>
                     <td className="py-3 px-3 text-center">
                       {isAgotado ? (

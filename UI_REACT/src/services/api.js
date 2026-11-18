@@ -126,7 +126,17 @@ export const api = {
   },
 
   // Dashboard & Analytics
-  getDashboard: (filters = {}) => apiRequest('dashboard.get', filters),
+  getDashboard: (filters = {}) => {
+    const sanitized = { ...filters };
+    if (sanitized.clave_mes) {
+      if (sanitized.clave_mes === 'TODOS' || sanitized.clave_mes === 'Todos') {
+        delete sanitized.clave_mes;
+      } else if (typeof sanitized.clave_mes === 'string' && sanitized.clave_mes.includes('-')) {
+        sanitized.clave_mes = Number(sanitized.clave_mes.replace(/-/g, ''));
+      }
+    }
+    return apiRequest('dashboard.get', sanitized);
+  },
 
   // Catálogo
   getCatalogo: (params = {}) => apiRequest('catalogo.list', params),

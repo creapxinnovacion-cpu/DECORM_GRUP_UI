@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/bodega_provider.dart';
 import '../models/articulo_model.dart';
 import '../config/theme.dart';
+import '../config/constants.dart';
 
 class ConsultaCatalogoScreen extends StatefulWidget {
   const ConsultaCatalogoScreen({super.key});
@@ -17,12 +18,7 @@ class _ConsultaCatalogoScreenState extends State<ConsultaCatalogoScreen> {
 
   final List<String> _categories = [
     'Todas',
-    'Herrajes',
-    'Pinturas',
-    'Lijas',
-    'Selladores y Silicones',
-    'Consumibles',
-    'Equipos',
+    ...AppConstants.categorias,
   ];
 
   void _mostrarDialogoNuevoArticulo(BuildContext context) {
@@ -41,8 +37,28 @@ class _ConsultaCatalogoScreenState extends State<ConsultaCatalogoScreen> {
     void generarSku(void Function(void Function()) setModalState) async {
       setModalState(() => isGenerating = true);
       try {
-        final next = await bodega.getNextSku(prefijo);
-        skuController.text = next;
+        final regex = RegExp('^$prefijo-(\\d+)\$', caseSensitive: false);
+        int maxNum = 0;
+        for (final item in bodega.catalogo) {
+          final match = regex.firstMatch(item.sku.trim());
+          if (match != null) {
+            final n = int.tryParse(match.group(1) ?? '0') ?? 0;
+            if (n > maxNum) maxNum = n;
+          }
+        }
+
+        int candidate = maxNum + 1;
+        try {
+          final next = await bodega.getNextSku(prefijo);
+          final bMatch = regex.firstMatch(next.trim());
+          if (bMatch != null) {
+            final bN = int.tryParse(bMatch.group(1) ?? '0') ?? 0;
+            if (bN > candidate) candidate = bN;
+          }
+        } catch (_) {}
+
+        final formatted = '$prefijo-${candidate.toString().padLeft(3, '0')}';
+        skuController.text = formatted;
       } finally {
         setModalState(() => isGenerating = false);
       }
@@ -91,27 +107,28 @@ class _ConsultaCatalogoScreenState extends State<ConsultaCatalogoScreen> {
                           initialValue: prefijo,
                           dropdownColor: DecormTheme.cardDark,
                           decoration: const InputDecoration(labelText: 'Familia'),
-                          items: const [
-                            DropdownMenuItem(value: 'CON', child: Text('CON')),
-                            DropdownMenuItem(value: 'HER', child: Text('HER')),
-                            DropdownMenuItem(value: 'PIN', child: Text('PIN')),
-                            DropdownMenuItem(value: 'ABR', child: Text('ABR')),
-                            DropdownMenuItem(value: 'SEL', child: Text('SEL')),
-                            DropdownMenuItem(value: 'EQU', child: Text('EQU')),
-                          ],
+                          items: AppConstants.familiasPrefijos.map((f) {
+                            return DropdownMenuItem(
+                              value: f['prefix'],
+                              child: Text(f['prefix']!),
+                            );
+                          }).toList(),
                           onChanged: (val) {
                             if (val != null) {
                               setModalState(() {
                                 prefijo = val;
                                 const catMap = {
-                                  'CON': 'Consumibles',
-                                  'HER': 'Herrajes',
-                                  'PIN': 'Pinturas',
-                                  'ABR': 'Lijas',
-                                  'SEL': 'Selladores y Silicones',
-                                  'EQU': 'Equipos',
+                                  'ABR': 'Abrasivos',
+                                  'CON': 'Consumibles y EPP',
+                                  'EQU': 'Equipos y herramientas',
+                                  'HER': 'Herrajes y accesorios',
+                                  'MET': 'Metal y estructura',
+                                  'PIN': 'Pintura y recubrimientos',
+                                  'SEL': 'Selladores y adhesivos',
+                                  'VID': 'Vidrio',
+                                  'LIV': 'Construcción liviana',
                                 };
-                                categoria = catMap[val] ?? 'Consumibles';
+                                categoria = catMap[val] ?? 'Consumibles y EPP';
                               });
                               generarSku(setModalState);
                             }
@@ -157,14 +174,9 @@ class _ConsultaCatalogoScreenState extends State<ConsultaCatalogoScreen> {
                           initialValue: unidad,
                           dropdownColor: DecormTheme.cardDark,
                           decoration: const InputDecoration(labelText: 'Unidad'),
-                          items: const [
-                            DropdownMenuItem(value: 'Unidad', child: Text('Unidad')),
-                            DropdownMenuItem(value: 'Pliego', child: Text('Pliego')),
-                            DropdownMenuItem(value: 'Galón', child: Text('Galón')),
-                            DropdownMenuItem(value: 'Tubo', child: Text('Tubo')),
-                            DropdownMenuItem(value: 'Par', child: Text('Par')),
-                            DropdownMenuItem(value: 'Caja', child: Text('Caja')),
-                          ],
+                          items: AppConstants.unidades.map((u) {
+                            return DropdownMenuItem(value: u, child: Text(u));
+                          }).toList(),
                           onChanged: (val) => setModalState(() => unidad = val!),
                         ),
                       ),
@@ -295,14 +307,9 @@ class _ConsultaCatalogoScreenState extends State<ConsultaCatalogoScreen> {
                           initialValue: unidad.isNotEmpty ? unidad : 'Unidad',
                           dropdownColor: DecormTheme.cardDark,
                           decoration: const InputDecoration(labelText: 'Unidad'),
-                          items: const [
-                            DropdownMenuItem(value: 'Unidad', child: Text('Unidad')),
-                            DropdownMenuItem(value: 'Pliego', child: Text('Pliego')),
-                            DropdownMenuItem(value: 'Galón', child: Text('Galón')),
-                            DropdownMenuItem(value: 'Tubo', child: Text('Tubo')),
-                            DropdownMenuItem(value: 'Par', child: Text('Par')),
-                            DropdownMenuItem(value: 'Caja', child: Text('Caja')),
-                          ],
+                          items: AppConstants.unidades.map((u) {
+                            return DropdownMenuItem(value: u, child: Text(u));
+                          }).toList(),
                           onChanged: (val) => setDialogState(() => unidad = val!),
                         ),
                       ),
