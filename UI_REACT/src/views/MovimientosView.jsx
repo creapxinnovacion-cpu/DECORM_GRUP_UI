@@ -19,7 +19,9 @@ import { api } from '../services/api';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
 import SearchableSkuSelect from '../components/SearchableSkuSelect';
+import ConsolidadoOperadorModal from '../components/ConsolidadoOperadorModal';
 import { TALLERES, OPERADORES } from '../config/constants';
+import { FileText, FileDown } from 'lucide-react';
 
 export function MovimientosView() {
   const [loading, setLoading] = useState(true);
@@ -56,6 +58,15 @@ export function MovimientosView() {
     entregado_a: '',
     observaciones: '',
   });
+
+  // Modal Consolidado por Operador (PDF / IMG)
+  const [showConsolidadoModal, setShowConsolidadoModal] = useState(false);
+  const [consolidadoOperador, setConsolidadoOperador] = useState('');
+
+  const openConsolidado = (operadorName = '') => {
+    setConsolidadoOperador(operadorName);
+    setShowConsolidadoModal(true);
+  };
 
   const fetchMovimientos = async () => {
     setLoading(true);
@@ -202,7 +213,15 @@ export function MovimientosView() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => openConsolidado('')}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/25 transition-all cursor-pointer"
+              title="Descargar o imprimir reporte consolidado de insumos por operador en PDF o Imagen"
+            >
+              <FileDown className="w-4 h-4 text-emerald-200" />
+              Consolidado por Operador (PDF / IMG)
+            </button>
             <button
               onClick={() => setShowPuertaModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold text-xs rounded-xl border border-amber-500/30 shadow-md transition-all cursor-pointer"
@@ -305,7 +324,19 @@ export function MovimientosView() {
                       {m.taller_destino}
                     </td>
                     <td className="py-3 px-4 text-slate-300 font-semibold">
-                      {m.entregado_a || '-'}
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate">{m.entregado_a || '-'}</span>
+                        {m.entregado_a && (
+                          <button
+                            type="button"
+                            onClick={() => openConsolidado(m.entregado_a)}
+                            className="p-1 text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 rounded transition border border-emerald-500/20 shrink-0 cursor-pointer"
+                            title={`Ver e imprimir consolidado de insumos de ${m.entregado_a}`}
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 px-3 text-right text-slate-400 font-mono">
                       ${Number(m.costo_estimado || 0).toFixed(2)}
@@ -709,6 +740,15 @@ export function MovimientosView() {
           </div>
         </form>
       </Modal>
+
+      {/* Modal Consolidado de Insumos por Operador (Control Interno PDF/PNG) */}
+      <ConsolidadoOperadorModal
+        isOpen={showConsolidadoModal}
+        onClose={() => setShowConsolidadoModal(false)}
+        movimientos={movimientos}
+        catalogoItems={catalogoItems}
+        initialOperador={consolidadoOperador}
+      />
     </div>
   );
 }
