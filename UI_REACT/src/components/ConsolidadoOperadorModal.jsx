@@ -15,7 +15,7 @@ import {
   AlertCircle,
   Hash,
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
+import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import { OPERADORES } from '../config/constants';
 
@@ -139,14 +139,20 @@ export default function ConsolidadoOperadorModal({
     setIsExportingPdf(true);
     try {
       const element = documentRef.current;
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
+      const dataUrl = await toPng(element, {
+        quality: 0.98,
+        pixelRatio: 2,
         backgroundColor: '#ffffff',
-        logging: false,
+        cacheBust: true,
       });
 
-      const imgData = canvas.toDataURL('image/png');
+      const img = new window.Image();
+      img.src = dataUrl;
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      });
+
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
@@ -154,9 +160,26 @@ export default function ConsolidadoOperadorModal({
       });
 
       const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      const pdfHeight = (img.naturalHeight * pdfWidth) / img.naturalWidth;
+      const pageHeight = pdf.internal.pageSize.getHeight();
 
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      if (pdfHeight > pageHeight) {
+        let heightLeft = pdfHeight;
+        let position = 0;
+
+        pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
+        heightLeft -= pageHeight;
+
+        while (heightLeft > 0) {
+          position = position - pageHeight;
+          pdf.addPage();
+          pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
+          heightLeft -= pageHeight;
+        }
+      } else {
+        pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      }
+
       const cleanName = (selectedOperador || 'Operador').replace(
         /[^a-zA-Z0-9]/g,
         '_'
@@ -177,21 +200,20 @@ export default function ConsolidadoOperadorModal({
     setIsExportingImg(true);
     try {
       const element = documentRef.current;
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
+      const dataUrl = await toPng(element, {
+        quality: 0.98,
+        pixelRatio: 2,
         backgroundColor: '#ffffff',
-        logging: false,
+        cacheBust: true,
       });
 
-      const image = canvas.toDataURL('image/png');
       const cleanName = (selectedOperador || 'Operador').replace(
         /[^a-zA-Z0-9]/g,
         '_'
       );
       const dateStr = new Date().toISOString().split('T')[0];
       const link = document.createElement('a');
-      link.href = image;
+      link.href = dataUrl;
       link.download = `Consolidado_Insumos_${cleanName}_${dateStr}.png`;
       document.body.appendChild(link);
       link.click();
