@@ -271,6 +271,26 @@ const SCHEMA = {
       unidades: 'number',
     },
   },
+  insumos_instaladores: {
+    sheet: 'InsumosInstaladores',
+    headerRow: 1,
+    firstRow: 2,
+    pk: 'codigo',
+    slotCols: ['Codigo', 'Insumo'],
+    inputs: {
+      codigo: 'Codigo',
+      insumo: 'Insumo',
+      check: 'Check',
+      cantidad: 'Cantidad',
+      encargado_instalacion: 'Encargado de Instlacion',
+      encargado_bodega: 'Encargado de bodega',
+    },
+    computed: {},
+    types: {
+      check: 'boolean',
+      cantidad: 'number',
+    },
+  },
 };
 
 const ROLE_PERMISSIONS = {
@@ -279,7 +299,8 @@ const ROLE_PERMISSIONS = {
     'auth.me', 'config.get',
     'catalogo.list', 'catalogo.get', 'catalogo.create', 'catalogo.update', 'catalogo.nextSku', 'catalogo.kardex',
     'compras.list', 'compras.get', 'compras.create', 'compras.createBatch', 'compras.update', 'compras.clear', 'compras.importDte',
-    'movimientos.list', 'seguimiento.list', 'equivalencias.list', 'conciliacion.get', 'dashboard.get', 'puertas.list', 'puertas.create', 'puertas.update'
+    'movimientos.list', 'seguimiento.list', 'equivalencias.list', 'conciliacion.get', 'dashboard.get', 'puertas.list', 'puertas.create', 'puertas.update',
+    'instaladores.list', 'instaladores.create', 'instaladores.createBatch', 'instaladores.update', 'instaladores.clear'
   ],
   bodega: [
     'auth.me', 'config.get',
@@ -288,15 +309,18 @@ const ROLE_PERMISSIONS = {
     'movimientos.list', 'movimientos.create', 'movimientos.createBatch', 'movimientos.entregarAPuerta',
     'prestamos.list', 'prestamos.create', 'prestamos.devolver',
     'seguimiento.list', 'seguimiento.upsert', 'equivalencias.list', 'equivalencias.confirmar',
-    'conciliacion.get', 'dashboard.get', 'puertas.list'
+    'conciliacion.get', 'dashboard.get', 'puertas.list',
+    'instaladores.list', 'instaladores.create', 'instaladores.createBatch', 'instaladores.update', 'instaladores.clear'
   ],
   taller: [
-    'auth.me', 'config.get', 'catalogo.list', 'movimientos.list', 'puertas.list', 'dashboard.get'
+    'auth.me', 'config.get', 'catalogo.list', 'movimientos.list', 'puertas.list', 'dashboard.get',
+    'instaladores.list', 'instaladores.create', 'instaladores.createBatch'
   ],
   lectura: [
     'auth.me', 'config.get', 'catalogo.list', 'catalogo.get', 'catalogo.kardex',
     'compras.list', 'movimientos.list', 'prestamos.list', 'seguimiento.list',
-    'equivalencias.list', 'conciliacion.get', 'dashboard.get', 'puertas.list'
+    'equivalencias.list', 'conciliacion.get', 'dashboard.get', 'puertas.list',
+    'instaladores.list'
   ],
 };
 
@@ -396,7 +420,13 @@ function getRoutes_() {
 
     'puertas.list': function(p) { return listEntity_('agenda_puertas', p); },
     'puertas.create': function(p, u, reqId) { return createRow_('agenda_puertas', p, u, reqId); },
-    'puertas.update': function(p, u, reqId) { return updateByPk_('agenda_puertas', p.sku_puerta, p.changes, u, reqId); },
+        'puertas.update': function(p, u, reqId) { return updateByPk_('agenda_puertas', p.sku_puerta, p.changes, u, reqId); },
+
+    'instaladores.list': function(p) { return listEntity_('insumos_instaladores', p); },
+    'instaladores.create': function(p, u, reqId) { return createRow_('insumos_instaladores', p, u, reqId); },
+    'instaladores.createBatch': handleInstaladoresBatch_,
+    'instaladores.update': function(p, u, reqId) { return updateRowByIndex_('insumos_instaladores', p.rowNumber, p.changes, u, reqId); },
+    'instaladores.clear': function(p, u, reqId) { return clearRowByIndex_('insumos_instaladores', p.rowNumber, u, reqId); },
   };
 }
 
@@ -503,9 +533,13 @@ function readRow_(sh, row, cols, def) {
     const colIdx = cols[colName];
     if (colIdx) {
       const raw = values[colIdx - 1];
-      obj[apiKey] = raw instanceof Date
-        ? Utilities.formatDate(raw, SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd')
-        : raw;
+      if (raw instanceof Date) {
+        obj[apiKey] = Utilities.formatDate(raw, SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd');
+      } else if (def.types && def.types[apiKey] === 'boolean') {
+        obj[apiKey] = Boolean(raw === true || String(raw).toLowerCase() === 'true');
+      } else {
+        obj[apiKey] = raw;
+      }
     }
   });
   return obj;
@@ -662,9 +696,13 @@ function listEntity_(entity, params) {
       const colIdx = cols[allMappings[apiKey]];
       if (colIdx) {
         const val = rowArr[colIdx - 1];
-        item[apiKey] = val instanceof Date
-          ? Utilities.formatDate(val, SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd')
-          : val;
+        if (val instanceof Date) {
+          item[apiKey] = Utilities.formatDate(val, SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd');
+        } else if (def.types && def.types[apiKey] === 'boolean') {
+          item[apiKey] = Boolean(val === true || String(val).toLowerCase() === 'true');
+        } else {
+          item[apiKey] = val;
+        }
       }
     });
     rows.push(item);
@@ -832,6 +870,35 @@ function handleEntregarAPuerta_(params, user, requestId) {
     observaciones: 'Puerta ' + params.sku_puerta + ' (' + (puerta.cliente || '') + ') | ' + (params.observaciones || ''),
   };
   return createMovimiento_(movPayload, user, requestId);
+}
+
+
+function handleInstaladoresBatch_(params, user, requestId) {
+  const cabecera = params.cabecera || {};
+  const lineas = params.lineas || [];
+  if (!lineas.length) {
+    throw appError_('VALIDATION', 'Debe enviar al menos una línea para InsumosInstaladores.');
+  }
+
+  const results = [];
+  lineas.forEach(function(lin, idx) {
+    const payload = {
+      codigo: lin.codigo,
+      insumo: lin.insumo,
+      check: lin.check === true || String(lin.check).toLowerCase() === 'true',
+      cantidad: Number(lin.cantidad || 0),
+      encargado_instalacion: lin.encargado_instalacion !== undefined
+        ? lin.encargado_instalacion
+        : (cabecera.encargado_instalacion || ''),
+      encargado_bodega: lin.encargado_bodega !== undefined
+        ? lin.encargado_bodega
+        : (cabecera.encargado_bodega || ''),
+    };
+    const subReqId = requestId ? requestId + '_' + idx : null;
+    results.push(createRow_('insumos_instaladores', payload, user, subReqId));
+  });
+
+  return { count: results.length, items: results };
 }
 
 function createPrestamo_(payload, user, requestId) {
@@ -1293,7 +1360,12 @@ function getAffectedCatalogo_(sku) {
 }
 
 function coerceValue_(val, type) {
-  if (val === null || val === undefined || val === '') return '';
+  if (val === null || val === undefined || val === '') {
+    return type === 'boolean' ? false : '';
+  }
+  if (type === 'boolean') {
+    return Boolean(val === true || String(val).toLowerCase() === 'true' || val === 1 || val === '1');
+  }
   if (type === 'number') {
     const n = Number(val);
     if (isNaN(n)) throw appError_('VALIDATION', 'Valor numérico inválido: ' + val);
