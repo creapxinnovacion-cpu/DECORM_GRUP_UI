@@ -149,7 +149,12 @@ export const api = {
   // Compras
   getCompras: (params = {}) => apiRequest('compras.list', params),
   createCompra: (compra) => apiRequest('compras.create', compra),
-  createComprasBatch: (compras) => apiRequest('compras.createBatch', { compras }),
+  createComprasBatch: (payload) => {
+    if (Array.isArray(payload)) {
+      return apiRequest('compras.createBatch', { lineas: payload });
+    }
+    return apiRequest('compras.createBatch', payload);
+  },
   updateCompra: (rowNumber, changes) => apiRequest('compras.update', { rowNumber, changes }),
   clearCompra: (rowNumber) => apiRequest('compras.clear', { rowNumber }),
   importDte: (dteJson, defaultSku, taller_destino) =>
@@ -181,4 +186,39 @@ export const api = {
   getPuertas: (params = {}) => apiRequest('puertas.list', params),
   createPuerta: (puerta) => apiRequest('puertas.create', puerta),
   updatePuerta: (sku_puerta, changes) => apiRequest('puertas.update', { sku_puerta, changes }),
+
+  // Insumos Instaladores (CRUD & Batch)
+  getInsumosInstaladores: (params = {}) => apiRequest('instaladores.list', params),
+  createInsumoInstalador: (payload) => apiRequest('instaladores.create', payload),
+  createInsumosInstaladoresBatch: (cabecera, lineas) =>
+    apiRequest('instaladores.createBatch', { cabecera, lineas }),
+  updateInsumoInstalador: (rowNumber, changes) =>
+    apiRequest('instaladores.update', { rowNumber, changes }),
+  clearInsumoInstalador: (rowNumber) => apiRequest('instaladores.clear', { rowNumber }),
+
+  // Forecast & Abastecimiento Inteligente v3.0
+  getForecast: (params = {}) => apiRequest('forecast.get', params),
+  getProjection: (sku) => apiRequest('forecast.projection', { sku }),
+  getForecastAlerts: (params = {}) => apiRequest('forecast.alerts', params),
+  getWeeklyPurchasePlan: (params = {}) => apiRequest('forecast.plan', params),
+  createConsumptionObservation: (payload) =>
+    apiRequest('forecast.observation.create', payload),
+  approveObservation: (id, decision, motivo) =>
+    apiRequest('forecast.observation.approve', { id, decision, motivo }),
+  runLearning: () => apiRequest('forecast.learning.run'),
+  getLearningHistory: (params = {}) => apiRequest('forecast.learning.history', params),
+  getForecastFeedback: (params = {}) => apiRequest('forecast.feedback.list', params),
+  createForecastFeedback: (payload) => apiRequest('forecast.feedback.create', payload),
+  getForecastHistory: (params = {}) => apiRequest('forecast.history.list', params),
+  getForecastParams: () => apiRequest('forecast.params.get'),
+  updateForecastParams: (updates) => apiRequest('forecast.params.update', { updates }),
+  getForecastConfig: (params = {}) => apiRequest('forecast.config.list', params),
+  updateForecastConfig: (sku, changes) =>
+    apiRequest('forecast.config.update', { sku, changes }),
+  getForecastBom: (params = {}) => apiRequest('forecast.bom.list', params),
+  upsertForecastBom: (payload) => apiRequest('forecast.bom.upsert', payload),
+  deleteForecastBom: (modelo, sku) =>
+    apiRequest('forecast.bom.delete', { modelo, sku }),
+  runDailyForecast: () => apiRequest('forecast.run'),
+  setupForecast: () => apiRequest('forecast.setup'),
 };

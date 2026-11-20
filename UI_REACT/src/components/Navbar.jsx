@@ -13,6 +13,7 @@ import {
   ChevronDown,
   RefreshCw,
   Sparkles,
+  Truck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Badge } from './Badge';
@@ -23,9 +24,11 @@ export function Navbar({ activeTab, setActiveTab, onRefresh, refreshing }) {
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'forecast', label: 'Abastecimiento (AI)', icon: Sparkles, highlight: true },
     { id: 'catalogo', label: 'Catálogo & Kardex', icon: Boxes },
     { id: 'compras', label: 'Compras & DTE', icon: ShoppingCart },
     { id: 'movimientos', label: 'Movimientos', icon: ArrowLeftRight },
+    { id: 'instaladores', label: 'Instaladores', icon: Truck },
     { id: 'conciliacion', label: 'Conciliación', icon: Scale },
     { id: 'prestamos', label: 'Préstamos Equipos', icon: Wrench },
     { id: 'puertas', label: 'Agenda Puertas', icon: DoorOpen },
@@ -46,7 +49,7 @@ export function Navbar({ activeTab, setActiveTab, onRefresh, refreshing }) {
                   GRUPO DECORM
                 </span>
                 <span className="text-xs bg-amber-500/10 text-amber-400 font-semibold px-2 py-0.5 rounded-sm border border-amber-500/20">
-                  v2.0
+                  v3.0
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 font-medium">
@@ -56,7 +59,7 @@ export function Navbar({ activeTab, setActiveTab, onRefresh, refreshing }) {
           </div>
 
           {/* Nav Items */}
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden xl:flex items-center gap-1">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -64,14 +67,16 @@ export function Navbar({ activeTab, setActiveTab, onRefresh, refreshing }) {
                 <button
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                     isActive
                       ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/15'
+                      : item.highlight
+                      ? 'text-amber-300 hover:text-white bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30'
                       : 'text-slate-300 hover:text-white hover:bg-slate-800'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
-                  {item.label}
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span>{item.label}</span>
                 </button>
               );
             })}
@@ -141,8 +146,8 @@ export function Navbar({ activeTab, setActiveTab, onRefresh, refreshing }) {
           </div>
         </div>
 
-        {/* Mobile Tab Bar */}
-        <div className="flex md:hidden items-center gap-1 overflow-x-auto py-2.5 scrollbar-none border-t border-slate-800/60">
+        {/* Mobile / Tablet Tab Bar */}
+        <div className="flex xl:hidden items-center gap-1 overflow-x-auto py-2.5 scrollbar-none border-t border-slate-800/60">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -150,9 +155,11 @@ export function Navbar({ activeTab, setActiveTab, onRefresh, refreshing }) {
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   isActive
-                    ? 'bg-amber-500 text-slate-950'
+                    ? 'bg-amber-500 text-slate-950 font-bold'
+                    : item.highlight
+                    ? 'text-amber-300 bg-amber-500/10 border border-amber-500/20'
                     : 'text-slate-400 hover:text-white bg-slate-800/40'
                 }`}
               >

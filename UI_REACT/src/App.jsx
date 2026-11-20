@@ -9,6 +9,8 @@ import { MovimientosView } from './views/MovimientosView';
 import { ConciliacionView } from './views/ConciliacionView';
 import { PrestamosView } from './views/PrestamosView';
 import { PuertasView } from './views/PuertasView';
+import { InstaladoresView } from './views/InstaladoresView';
+import { ForecastModuleView } from './views/forecast/ForecastModuleView';
 
 function MainLayout() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -43,9 +45,13 @@ function MainLayout() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6" key={refreshKey}>
         {activeTab === 'dashboard' && <DashboardView />}
+        {activeTab === 'forecast' && (
+          <ForecastModuleView onNavigateRoot={(tab) => setActiveTab(tab)} />
+        )}
         {activeTab === 'catalogo' && <CatalogoView />}
         {activeTab === 'compras' && <ComprasView />}
         {activeTab === 'movimientos' && <MovimientosView />}
+        {activeTab === 'instaladores' && <InstaladoresView />}
         {activeTab === 'conciliacion' && <ConciliacionView />}
         {activeTab === 'prestamos' && <PrestamosView />}
         {activeTab === 'puertas' && <PuertasView />}
@@ -54,7 +60,7 @@ function MainLayout() {
       {/* Footer */}
       <footer className="border-t border-slate-900 bg-slate-950/80 py-4 text-center text-xs text-slate-500">
         <p>
-          GRUPO DECORM &copy; 2026 · Sistema Maestro Unificado v2.0 · Google Apps Script & React Engine
+          GRUPO DECORM &copy; 2026 · Sistema Maestro Unificado v3.0 · Forecast Engine & React
         </p>
       </footer>
 
