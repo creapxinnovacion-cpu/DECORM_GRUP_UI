@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import { Navbar } from './components/Navbar';
+import { AuthProvider } from './context/AuthContext';
+import { Sidebar } from './components/Sidebar';
+import { Header } from './components/Header';
 import { LoginModal } from './components/LoginModal';
 import { DashboardView } from './views/DashboardView';
 import { CatalogoView } from './views/CatalogoView';
@@ -13,7 +14,7 @@ import { InstaladoresView } from './views/InstaladoresView';
 import { ForecastModuleView } from './views/forecast/ForecastModuleView';
 
 function MainLayout() {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('movimientos'); // Acceso por defecto al taller
   const [refreshKey, setRefreshKey] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -27,9 +28,9 @@ function MainLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-black">
-      {/* Top Navbar */}
-      <Navbar
+    <div className="h-[100dvh] w-full bg-slate-950 text-slate-100 flex overflow-hidden font-sans selection:bg-amber-500 selection:text-black">
+      {/* 1. Barra Lateral (Escritorio y Tablet) + Barra Inferior (Móvil) */}
+      <Sidebar
         activeTab={activeTab}
         setActiveTab={(tab) => {
           if (tab === 'login') {
@@ -42,29 +43,36 @@ function MainLayout() {
         refreshing={refreshing}
       />
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6" key={refreshKey}>
-        {activeTab === 'dashboard' && <DashboardView />}
-        {activeTab === 'forecast' && (
-          <ForecastModuleView onNavigateRoot={(tab) => setActiveTab(tab)} />
-        )}
-        {activeTab === 'catalogo' && <CatalogoView />}
-        {activeTab === 'compras' && <ComprasView />}
-        {activeTab === 'movimientos' && <MovimientosView />}
-        {activeTab === 'instaladores' && <InstaladoresView />}
-        {activeTab === 'conciliacion' && <ConciliacionView />}
-        {activeTab === 'prestamos' && <PrestamosView />}
-        {activeTab === 'puertas' && <PuertasView />}
-      </main>
+      {/* 2. Área Central de Contenido */}
+      <div className="flex-1 flex flex-col min-w-0 h-[100dvh] overflow-hidden">
+        {/* Cabecera Fija de 56px (h-14) */}
+        <Header
+          activeTab={activeTab}
+          onRefresh={handleRefresh}
+          refreshing={refreshing}
+          onLoginClick={() => setShowLoginModal(true)}
+        />
 
-      {/* Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950/80 py-4 text-center text-xs text-slate-500">
-        <p>
-          GRUPO DECORM &copy; 2026 · Sistema Maestro Unificado v3.0 · Forecast Engine & React
-        </p>
-      </footer>
+        {/* Contenedor Principal con Scroll Independiente y padding inferior en móvil para no tapar con la barra */}
+        <main
+          className="flex-1 overflow-y-auto px-3 sm:px-6 lg:px-8 py-5 pb-24 md:pb-8 w-full max-w-[1600px] mx-auto"
+          key={refreshKey}
+        >
+          {activeTab === 'movimientos' && <MovimientosView />}
+          {activeTab === 'instaladores' && <InstaladoresView />}
+          {activeTab === 'puertas' && <PuertasView />}
+          {activeTab === 'forecast' && (
+            <ForecastModuleView onNavigateRoot={(tab) => setActiveTab(tab)} />
+          )}
+          {activeTab === 'compras' && <ComprasView />}
+          {activeTab === 'catalogo' && <CatalogoView />}
+          {activeTab === 'dashboard' && <DashboardView />}
+          {activeTab === 'conciliacion' && <ConciliacionView />}
+          {activeTab === 'prestamos' && <PrestamosView />}
+        </main>
+      </div>
 
-      {/* Login Modal */}
+      {/* Modal de Inicio de Sesión */}
       <LoginModal
         isOpen={showLoginModal}
         onClose={() => setShowLoginModal(false)}

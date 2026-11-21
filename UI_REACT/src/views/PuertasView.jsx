@@ -19,6 +19,9 @@ import {
   User,
   Sparkles,
   ExternalLink,
+  Kanban,
+  LayoutGrid,
+  GripVertical,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { Badge } from '../components/Badge';
@@ -41,6 +44,13 @@ export function PuertasView() {
   const [filterEstado, setFilterEstado] = useState('Todos');
   const [filterTaller, setFilterTaller] = useState('Todos');
 
+  // Modo de vista: 'kanban' (Drag & Drop) o 'grid'
+  const [viewMode, setViewMode] = useState('kanban');
+
+  // Drag & Drop State
+  const [draggingSku, setDraggingSku] = useState(null);
+  const [dragOverColumn, setDragOverColumn] = useState(null);
+
   // Tarjetas expandidas (acordeón dropdown)
   const [expandedCards, setExpandedCards] = useState({});
 
@@ -54,7 +64,7 @@ export function PuertasView() {
     modelo: 'LYNUX',
     posicion: 'Principal',
     unidades: 1,
-    estado: 'En proceso',
+    estado: 'Por fabricar',
     medidas: '2.15 x 1.50 m',
     color: 'Negro mate',
     vidrio: 'Nevado',
@@ -96,8 +106,9 @@ export function PuertasView() {
     }));
   };
 
-  // Cambio directo de estado desde el dropdown de la tarjeta
+  // Cambio directo de estado
   const handleQuickStatusChange = async (sku_puerta, nuevoEstado) => {
+    if (!sku_puerta || !nuevoEstado) return;
     setUpdatingSku(sku_puerta);
     // Optimistic update
     setPuertas((prev) =>
@@ -113,6 +124,39 @@ export function PuertasView() {
     } finally {
       setUpdatingSku(null);
     }
+  };
+
+  // Drag and Drop handlers
+  const handleDragStart = (e, sku) => {
+    setDraggingSku(sku);
+    e.dataTransfer.setData('text/plain', sku);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEnd = () => {
+    setDraggingSku(null);
+    setDragOverColumn(null);
+  };
+
+  const handleDragOver = (e, columnEstado) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverColumn !== columnEstado) {
+      setDragOverColumn(columnEstado);
+    }
+  };
+
+  const handleDropOnColumn = async (e, columnEstado) => {
+    e.preventDefault();
+    setDragOverColumn(null);
+    const sku = e.dataTransfer.getData('text/plain') || draggingSku;
+    if (!sku) return;
+
+    const puerta = puertas.find((p) => p.sku_puerta === sku);
+    if (!puerta || puerta.estado === columnEstado) return;
+
+    // Ejecutar cambio de estado
+    await handleQuickStatusChange(sku, columnEstado);
   };
 
   const handleCreatePuerta = async (e) => {
@@ -176,6 +220,8 @@ export function PuertasView() {
       return {
         badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
         select: 'text-emerald-400 border-emerald-500/30 bg-emerald-950/40',
+        colHeader: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
+        dot: 'bg-emerald-400',
         icon: CheckCircle,
       };
     }
@@ -183,6 +229,8 @@ export function PuertasView() {
       return {
         badge: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
         select: 'text-cyan-400 border-cyan-500/30 bg-cyan-950/40',
+        colHeader: 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300',
+        dot: 'bg-cyan-400',
         icon: Truck,
       };
     }
@@ -190,6 +238,8 @@ export function PuertasView() {
       return {
         badge: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
         select: 'text-purple-400 border-purple-500/30 bg-purple-950/40',
+        colHeader: 'border-purple-500/40 bg-purple-500/10 text-purple-300',
+        dot: 'bg-purple-400',
         icon: Paintbrush,
       };
     }
@@ -197,6 +247,8 @@ export function PuertasView() {
       return {
         badge: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
         select: 'text-amber-400 border-amber-500/30 bg-amber-950/40',
+        colHeader: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
+        dot: 'bg-amber-400',
         icon: Hammer,
       };
     }
@@ -204,12 +256,16 @@ export function PuertasView() {
       return {
         badge: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
         select: 'text-orange-400 border-orange-500/30 bg-orange-950/40',
+        colHeader: 'border-orange-500/40 bg-orange-500/10 text-orange-300',
+        dot: 'bg-orange-400',
         icon: Clock,
       };
     }
     return {
       badge: 'bg-slate-700/20 text-slate-400 border-slate-700/30',
       select: 'text-slate-300 border-slate-700 bg-slate-900',
+      colHeader: 'border-slate-700 bg-slate-800/60 text-slate-300',
+      dot: 'bg-slate-500',
       icon: Clock,
     };
   };
@@ -234,10 +290,187 @@ export function PuertasView() {
     return matchSearch && matchEstado && matchTaller;
   });
 
+  // Render Card Component (reusable in both Kanban and Grid)
+  const renderPuertaCard = (p, isKanbanItem = false) => {
+    const isExpanded = Boolean(expandedCards[p.sku_puerta]);
+    const isUpdatingThis = updatingSku === p.sku_puerta;
+    const isBeingDragged = draggingSku === p.sku_puerta;
+    const currentStatus = p.estado || 'Por fabricar';
+    const statusConfig = getStatusColor(currentStatus);
+
+    return (
+      <div
+        key={p.sku_puerta}
+        draggable={true}
+        onDragStart={(e) => handleDragStart(e, p.sku_puerta)}
+        onDragEnd={handleDragEnd}
+        className={`bg-slate-900 border rounded-2xl p-4 shadow-xl transition-all flex flex-col justify-between group relative overflow-hidden cursor-grab active:cursor-grabbing ${
+          isBeingDragged
+            ? 'opacity-40 scale-95 border-amber-500/80 shadow-amber-500/20'
+            : 'border-slate-800 hover:border-slate-700'
+        } ${isKanbanItem ? 'mb-3' : ''}`}
+      >
+        {/* Barra lateral de color de taller */}
+        <div
+          className={`absolute left-0 top-0 bottom-0 w-1 ${
+            (p.taller || '').toLowerCase().includes('sonsonate')
+              ? 'bg-sky-500'
+              : (p.taller || '').toLowerCase().includes('santa ana')
+              ? 'bg-amber-500'
+              : 'bg-emerald-500'
+          }`}
+        />
+
+        <div>
+          {/* Encabezado: Handle drag + SKU + Dropdown de Estado */}
+          <div className="flex items-center justify-between gap-1.5 mb-2.5">
+            <div className="flex items-center gap-1.5">
+              <GripVertical className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 transition" />
+              <span className="font-mono font-black text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md">
+                {p.sku_puerta}
+              </span>
+            </div>
+
+            {/* Selector de Estado */}
+            <div className="relative flex items-center">
+              <select
+                value={currentStatus}
+                disabled={isUpdatingThis}
+                onChange={(e) => handleQuickStatusChange(p.sku_puerta, e.target.value)}
+                className={`text-[10px] font-bold rounded-md px-2 py-0.5 border transition cursor-pointer focus:outline-none appearance-none pr-5 ${statusConfig.select}`}
+                title="Cambiar estado"
+              >
+                {ESTADOS_PUERTA.map((st) => (
+                  <option key={st} value={st} className="bg-slate-900 text-slate-100">
+                    {st}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3 h-3 absolute right-1 pointer-events-none opacity-70" />
+              {isUpdatingThis && (
+                <RefreshCw className="w-3 h-3 animate-spin text-amber-400 absolute -left-4" />
+              )}
+            </div>
+          </div>
+
+          {/* Cliente y Modelo */}
+          <h3 className="text-xs sm:text-sm font-bold text-slate-100 truncate" title={p.cliente}>
+            {p.cliente || 'Cliente no especificado'}
+          </h3>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span className="text-[11px] font-semibold text-slate-300">
+              {p.modelo || 'Modelo estándar'}
+            </span>
+            <span className="text-[9px] px-1 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">
+              {p.posicion || 'Principal'}
+            </span>
+          </div>
+
+          {/* Datos Resumidos */}
+          <div className="mt-2.5 grid grid-cols-2 gap-1.5 text-[11px]">
+            <div className="p-1.5 bg-slate-950/70 rounded-lg border border-slate-800/80">
+              <span className="text-[9px] text-slate-500 block uppercase font-bold">Medidas</span>
+              <span className="font-semibold text-slate-200 truncate block">
+                {p.medidas || 'Estándar'}
+              </span>
+            </div>
+
+            <div className="p-1.5 bg-slate-950/70 rounded-lg border border-slate-800/80">
+              <span className="text-[9px] text-slate-500 block uppercase font-bold">Taller</span>
+              <span className="font-semibold text-sky-400 truncate block">
+                {p.taller || 'Santa Ana'}
+              </span>
+            </div>
+
+            <div className="p-1.5 bg-slate-950/70 rounded-lg border border-slate-800/80">
+              <span className="text-[9px] text-slate-500 block uppercase font-bold">Color</span>
+              <span className="font-semibold text-slate-200 truncate block">
+                {p.color || '-'}
+              </span>
+            </div>
+
+            <div className="p-1.5 bg-slate-950/70 rounded-lg border border-slate-800/80">
+              <span className="text-[9px] text-slate-500 block uppercase font-bold">Entrega</span>
+              <span className="font-semibold text-amber-300 font-mono truncate block">
+                {p.dia_entrega || '-'}
+              </span>
+            </div>
+          </div>
+
+          {/* Acordeón de Detalles Técnicos */}
+          {isExpanded && (
+            <div className="mt-2.5 p-2.5 bg-slate-950 rounded-xl border border-slate-800/90 space-y-1.5 text-[11px] animate-in fade-in duration-150">
+              <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                <div>
+                  <span className="text-slate-500 block">Vidrio:</span>
+                  <span className="font-semibold text-slate-200">{p.vidrio || 'No'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Chambrana:</span>
+                  <span className="font-semibold text-slate-200">{p.chambrana || 'No'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Cerradura:</span>
+                  <span className="font-semibold text-slate-200">{p.cerradura || 'Sin detalle'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Haladera:</span>
+                  <span className="font-semibold text-slate-200">{p.haladera || 'Sin detalle'}</span>
+                </div>
+              </div>
+
+              {p.notas_tecnicas && (
+                <div className="pt-1.5 border-t border-slate-800 text-[10px]">
+                  <span className="text-amber-400 font-semibold block mb-0.5">Notas Técnicas:</span>
+                  <p className="text-slate-300 bg-slate-900/80 p-1.5 rounded font-mono text-[9px] leading-relaxed">
+                    {p.notas_tecnicas}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer de Tarjeta */}
+        <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-xs">
+          <button
+            type="button"
+            onClick={() => toggleExpand(p.sku_puerta)}
+            className="flex items-center gap-1 text-[10px] font-semibold text-amber-400 hover:text-amber-300 transition cursor-pointer"
+          >
+            {isExpanded ? (
+              <>
+                <ChevronUp className="w-3 h-3" /> Menos
+              </>
+            ) : (
+              <>
+                <ChevronDown className="w-3 h-3" /> Detalles
+              </>
+            )}
+          </button>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-slate-500 font-mono">
+              Cant: <strong className="text-slate-200">{p.unidades || 1}</strong>
+            </span>
+            <button
+              type="button"
+              onClick={() => openEditModal(p)}
+              className="p-1 text-slate-400 hover:text-amber-400 bg-slate-800 hover:bg-slate-700 rounded-md transition cursor-pointer border border-slate-700"
+              title="Editar puerta"
+            >
+              <Edit2 className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Header and Controls */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-xl sm:text-2xl font-black text-slate-100 flex items-center gap-2">
@@ -246,15 +479,45 @@ export function PuertasView() {
               </span>
               Agenda de Puertas en Producción
               <span className="text-xs font-bold bg-amber-500/20 text-amber-300 px-2.5 py-0.5 rounded-full border border-amber-500/30">
-                Hoja AgendaDePuertas
+                Arrastrar y Soltar
               </span>
             </h1>
-            <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              Control de fabricación, medidas, acabados, talleres y cambio rápido de estado por tarjeta.
+            <p className="text-xs text-slate-400 mt-1">
+              Tablero interactivo: arrastra y suelta tarjetas entre estados para actualizar el flujo de taller en Google Sheets.
             </p>
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Toggle de Vista: Kanban vs Grid */}
+            <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl p-1">
+              <button
+                type="button"
+                onClick={() => setViewMode('kanban')}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  viewMode === 'kanban'
+                    ? 'bg-amber-500 text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Tablero Kanban con arrastrar y soltar"
+              >
+                <Kanban className="w-3.5 h-3.5" />
+                <span>Tablero</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  viewMode === 'grid'
+                    ? 'bg-amber-500 text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Vista en cuadrícula"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Cuadrícula</span>
+              </button>
+            </div>
+
             <button
               onClick={() => setShowModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition cursor-pointer"
@@ -274,7 +537,7 @@ export function PuertasView() {
         </div>
 
         {/* Filter Bar */}
-        <div className="mt-6 flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
+        <div className="mt-5 flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
           <div className="relative flex-1 max-w-md">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
@@ -287,7 +550,6 @@ export function PuertasView() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            {/* Filtro Taller */}
             <div className="flex items-center gap-1.5 bg-slate-800/60 border border-slate-700 rounded-xl px-2.5 py-1">
               <Building className="w-3.5 h-3.5 text-slate-400" />
               <select
@@ -302,22 +564,23 @@ export function PuertasView() {
               </select>
             </div>
 
-            {/* Filtro Estado */}
-            <div className="flex items-center gap-1.5 bg-slate-800/60 border border-slate-700 rounded-xl px-2.5 py-1">
-              <Sliders className="w-3.5 h-3.5 text-slate-400" />
-              <select
-                value={filterEstado}
-                onChange={(e) => setFilterEstado(e.target.value)}
-                className="bg-transparent text-slate-200 text-xs font-semibold focus:outline-none cursor-pointer"
-              >
-                <option value="Todos" className="bg-slate-900">Todos los Estados</option>
-                {ESTADOS_PUERTA.map((st) => (
-                  <option key={st} value={st} className="bg-slate-900">
-                    {st}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {viewMode === 'grid' && (
+              <div className="flex items-center gap-1.5 bg-slate-800/60 border border-slate-700 rounded-xl px-2.5 py-1">
+                <Sliders className="w-3.5 h-3.5 text-slate-400" />
+                <select
+                  value={filterEstado}
+                  onChange={(e) => setFilterEstado(e.target.value)}
+                  className="bg-transparent text-slate-200 text-xs font-semibold focus:outline-none cursor-pointer"
+                >
+                  <option value="Todos" className="bg-slate-900">Todos los Estados</option>
+                  {ESTADOS_PUERTA.map((st) => (
+                    <option key={st} value={st} className="bg-slate-900">
+                      {st}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <span className="text-[11px] text-slate-400 font-mono ml-2">
               {filteredPuertas.length} {filteredPuertas.length === 1 ? 'puerta' : 'puertas'}
@@ -326,188 +589,76 @@ export function PuertasView() {
         </div>
       </div>
 
-      {/* Grid de Tarjetas con Dropdown y Acordeón */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {loading ? (
-          <div className="col-span-full py-16 text-center text-slate-400">
-            <RefreshCw className="w-8 h-8 animate-spin mx-auto text-amber-500 mb-3" />
-            Cargando agenda de puertas desde Google Sheets...
-          </div>
-        ) : filteredPuertas.length === 0 ? (
-          <div className="col-span-full py-16 text-center text-slate-500 bg-slate-900/40 border border-slate-800 rounded-2xl p-8">
-            <DoorOpen className="w-10 h-10 mx-auto text-slate-600 mb-2 opacity-50" />
-            <p className="text-sm font-semibold">No se encontraron puertas con los filtros seleccionados.</p>
-            <p className="text-xs text-slate-500 mt-1">Prueba cambiando el taller o término de búsqueda.</p>
-          </div>
-        ) : (
-          filteredPuertas.map((p) => {
-            const isExpanded = Boolean(expandedCards[p.sku_puerta]);
-            const isUpdatingThis = updatingSku === p.sku_puerta;
-            const currentStatus = p.estado || 'Por fabricar';
-            const statusConfig = getStatusColor(currentStatus);
-            const StatusIcon = statusConfig.icon;
+      {/* VISTA 1: TABLERO KANBAN CON DRAG AND DROP */}
+      {viewMode === 'kanban' ? (
+        <div className="overflow-x-auto pb-4">
+          <div className="min-w-[1200px] grid grid-cols-6 gap-3.5 items-start">
+            {ESTADOS_PUERTA.map((colEstado) => {
+              const statusCfg = getStatusColor(colEstado);
+              const ColIcon = statusCfg.icon;
+              const itemsInCol = filteredPuertas.filter(
+                (p) => (p.estado || 'Por fabricar').toLowerCase() === colEstado.toLowerCase()
+              );
+              const isOverThis = dragOverColumn === colEstado;
 
-            return (
-              <div
-                key={p.sku_puerta}
-                className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl hover:border-slate-700/80 transition-all flex flex-col justify-between group relative overflow-hidden"
-              >
-                {/* Indicador de taller en barra lateral izquierda */}
+              return (
                 <div
-                  className={`absolute left-0 top-0 bottom-0 w-1 ${
-                    (p.taller || '').toLowerCase().includes('sonsonate')
-                      ? 'bg-sky-500'
-                      : (p.taller || '').toLowerCase().includes('santa ana')
-                      ? 'bg-amber-500'
-                      : 'bg-emerald-500'
+                  key={colEstado}
+                  onDragOver={(e) => handleDragOver(e, colEstado)}
+                  onDragLeave={() => setDragOverColumn(null)}
+                  onDrop={(e) => handleDropOnColumn(e, colEstado)}
+                  className={`rounded-2xl p-3 border transition-all flex flex-col min-h-[500px] ${
+                    isOverThis
+                      ? 'border-amber-500/80 bg-amber-500/[0.08] shadow-lg shadow-amber-500/10'
+                      : 'border-slate-800/80 bg-slate-950/60'
                   }`}
-                />
-
-                <div>
-                  {/* Encabezado: SKU + Dropdown de Estado directo */}
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <span className="font-mono font-black text-sm text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg">
-                      {p.sku_puerta}
-                    </span>
-
-                    {/* DROPDOWN SELECTOR DE ESTADO DIRECTO */}
-                    <div className="relative flex items-center">
-                      <select
-                        value={currentStatus}
-                        disabled={isUpdatingThis}
-                        onChange={(e) => handleQuickStatusChange(p.sku_puerta, e.target.value)}
-                        className={`text-[11px] font-bold rounded-lg px-2.5 py-1 border transition-colors cursor-pointer focus:outline-none appearance-none pr-6 ${statusConfig.select}`}
-                        title="Cambiar estado en Google Sheets"
-                      >
-                        {ESTADOS_PUERTA.map((st) => (
-                          <option key={st} value={st} className="bg-slate-900 text-slate-100">
-                            {st}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="w-3.5 h-3.5 absolute right-1.5 pointer-events-none opacity-70" />
-                      {isUpdatingThis && (
-                        <RefreshCw className="w-3 h-3 animate-spin text-amber-400 absolute -left-4" />
-                      )}
+                >
+                  {/* Encabezado de Columna */}
+                  <div className={`p-2.5 rounded-xl border mb-3 flex items-center justify-between ${statusCfg.colHeader}`}>
+                    <div className="flex items-center gap-1.5 truncate">
+                      <ColIcon className="w-3.5 h-3.5 shrink-0" />
+                      <span className="text-[11px] font-bold uppercase tracking-wider truncate">
+                        {colEstado}
+                      </span>
                     </div>
-                  </div>
-
-                  {/* Cliente y Modelo */}
-                  <h3 className="text-sm font-bold text-slate-100 truncate" title={p.cliente}>
-                    {p.cliente || 'Cliente no especificado'}
-                  </h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs font-semibold text-slate-300">
-                      {p.modelo || 'Modelo estándar'}
-                    </span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
-                      {p.posicion || 'Principal'}
+                    <span className="w-5 h-5 rounded-full bg-slate-950/60 font-mono font-bold text-[10px] flex items-center justify-center shrink-0">
+                      {itemsInCol.length}
                     </span>
                   </div>
 
-                  {/* Datos Clave Resumidos */}
-                  <div className="mt-3.5 grid grid-cols-2 gap-2 text-xs">
-                    <div className="p-2 bg-slate-950/60 rounded-xl border border-slate-800/80">
-                      <span className="text-[10px] text-slate-500 block uppercase font-bold">Medidas</span>
-                      <span className="font-semibold text-slate-200 truncate block">
-                        {p.medidas || 'Estándar'}
-                      </span>
-                    </div>
-
-                    <div className="p-2 bg-slate-950/60 rounded-xl border border-slate-800/80">
-                      <span className="text-[10px] text-slate-500 block uppercase font-bold">Taller</span>
-                      <span className="font-semibold text-sky-400 truncate block">
-                        {p.taller || 'Santa Ana'}
-                      </span>
-                    </div>
-
-                    <div className="p-2 bg-slate-950/60 rounded-xl border border-slate-800/80">
-                      <span className="text-[10px] text-slate-500 block uppercase font-bold">Color / Acabado</span>
-                      <span className="font-semibold text-slate-200 truncate block">
-                        {p.color || '-'}
-                      </span>
-                    </div>
-
-                    <div className="p-2 bg-slate-950/60 rounded-xl border border-slate-800/80">
-                      <span className="text-[10px] text-slate-500 block uppercase font-bold">Entrega</span>
-                      <span className="font-semibold text-amber-300 font-mono truncate block">
-                        {p.dia_entrega || '-'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* DROPDOWN / ACORDEÓN EXPANDIBLE DE DETALLES */}
-                  {isExpanded && (
-                    <div className="mt-3 p-3 bg-slate-950 rounded-xl border border-slate-800/90 space-y-2 text-xs animate-in fade-in duration-200">
-                      <div className="grid grid-cols-2 gap-2 text-[11px]">
-                        <div>
-                          <span className="text-slate-500 block">Vidrio:</span>
-                          <span className="font-semibold text-slate-200">{p.vidrio || 'No'}</span>
-                        </div>
-                        <div>
-                          <span className="text-slate-500 block">Chambrana:</span>
-                          <span className="font-semibold text-slate-200">{p.chambrana || 'No'}</span>
-                        </div>
-                        <div>
-                          <span className="text-slate-500 block">Cerradura:</span>
-                          <span className="font-semibold text-slate-200">{p.cerradura || 'Sin detalle'}</span>
-                        </div>
-                        <div>
-                          <span className="text-slate-500 block">Haladera:</span>
-                          <span className="font-semibold text-slate-200">{p.haladera || 'Sin detalle'}</span>
-                        </div>
+                  {/* Zona de Drop y Tarjetas */}
+                  <div className="flex-1 space-y-3">
+                    {itemsInCol.length === 0 ? (
+                      <div className="h-32 border-2 border-dashed border-slate-800/80 rounded-xl flex items-center justify-center text-slate-600 text-[11px] text-center p-2">
+                        <span>Arrastra una puerta aquí</span>
                       </div>
-
-                      {p.notas_tecnicas && (
-                        <div className="pt-2 border-t border-slate-800 text-[11px]">
-                          <span className="text-amber-400 font-semibold block mb-0.5">Notas Técnicas:</span>
-                          <p className="text-slate-300 bg-slate-900/80 p-2 rounded-lg font-mono text-[10px] leading-relaxed">
-                            {p.notas_tecnicas}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Footer de Tarjeta: Toggle detalles + Botón editar */}
-                <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
-                  {/* Botón Acordeón Dropdown */}
-                  <button
-                    type="button"
-                    onClick={() => toggleExpand(p.sku_puerta)}
-                    className="flex items-center gap-1 text-[11px] font-semibold text-amber-400/90 hover:text-amber-300 transition cursor-pointer"
-                  >
-                    {isExpanded ? (
-                      <>
-                        <ChevronUp className="w-3.5 h-3.5" /> Ocultar detalles
-                      </>
                     ) : (
-                      <>
-                        <ChevronDown className="w-3.5 h-3.5" /> Especificaciones técnicas
-                      </>
+                      itemsInCol.map((p) => renderPuertaCard(p, true))
                     )}
-                  </button>
-
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-500 font-mono">
-                      Cant: <strong className="text-slate-200">{p.unidades || 1}</strong>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => openEditModal(p)}
-                      className="p-1.5 text-slate-400 hover:text-amber-400 bg-slate-800 hover:bg-slate-700 rounded-lg transition cursor-pointer border border-slate-700"
-                      title="Editar especificaciones completas"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
                   </div>
                 </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        /* VISTA 2: CUADRÍCULA */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {loading ? (
+            <div className="col-span-full py-16 text-center text-slate-400">
+              <RefreshCw className="w-8 h-8 animate-spin mx-auto text-amber-500 mb-3" />
+              Cargando agenda de puertas...
+            </div>
+          ) : filteredPuertas.length === 0 ? (
+            <div className="col-span-full py-16 text-center text-slate-500 bg-slate-900/40 border border-slate-800 rounded-2xl p-8">
+              <DoorOpen className="w-10 h-10 mx-auto text-slate-600 mb-2 opacity-50" />
+              <p className="text-sm font-semibold">No se encontraron puertas con los filtros seleccionados.</p>
+            </div>
+          ) : (
+            filteredPuertas.map((p) => renderPuertaCard(p, false))
+          )}
+        </div>
+      )}
 
       {/* Modal Nueva Puerta (Create) */}
       <Modal
@@ -548,9 +699,7 @@ export function PuertasView() {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block font-semibold text-slate-300 mb-1">
-                Modelo
-              </label>
+              <label className="block font-semibold text-slate-300 mb-1">Modelo</label>
               <input
                 type="text"
                 placeholder="Ej: LYNUX, NIRYX, ANDRÓMEDA"
@@ -561,9 +710,7 @@ export function PuertasView() {
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-300 mb-1">
-                Posición
-              </label>
+              <label className="block font-semibold text-slate-300 mb-1">Posición</label>
               <input
                 type="text"
                 placeholder="Ej: Principal, Interior"
@@ -574,9 +721,7 @@ export function PuertasView() {
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-300 mb-1">
-                Taller Asignado
-              </label>
+              <label className="block font-semibold text-slate-300 mb-1">Taller Asignado</label>
               <select
                 value={formData.taller}
                 onChange={(e) => setFormData({ ...formData, taller: e.target.value })}
@@ -591,9 +736,7 @@ export function PuertasView() {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block font-semibold text-slate-300 mb-1">
-                Estado Inicial
-              </label>
+              <label className="block font-semibold text-slate-300 mb-1">Estado Inicial</label>
               <select
                 value={formData.estado}
                 onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
@@ -608,9 +751,7 @@ export function PuertasView() {
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-300 mb-1">
-                Medidas
-              </label>
+              <label className="block font-semibold text-slate-300 mb-1">Medidas</label>
               <input
                 type="text"
                 placeholder="Ej: 2.15 x 1.50 m"
@@ -621,9 +762,7 @@ export function PuertasView() {
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-300 mb-1">
-                Día / Fecha de Entrega
-              </label>
+              <label className="block font-semibold text-slate-300 mb-1">Día / Fecha Entrega</label>
               <input
                 type="text"
                 placeholder="Ej: Martes o 2026-11-25"
@@ -634,7 +773,6 @@ export function PuertasView() {
             </div>
           </div>
 
-          {/* Especificaciones de herrajes y acabados */}
           <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
             <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wide block">
               Especificaciones de Herrería, Vidrio y Cerrajería
@@ -711,10 +849,10 @@ export function PuertasView() {
             </div>
 
             <div>
-              <label className="block text-[11px] text-slate-400 mb-1">Notas Técnicas de Fabricación</label>
+              <label className="block text-[11px] text-slate-400 mb-1">Notas Técnicas</label>
               <textarea
                 rows={2}
-                placeholder="Instrucciones especiales para el maestro de taller..."
+                placeholder="Instrucciones para taller..."
                 value={formData.notas_tecnicas}
                 onChange={(e) => setFormData({ ...formData, notas_tecnicas: e.target.value })}
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100 text-xs focus:outline-none"
