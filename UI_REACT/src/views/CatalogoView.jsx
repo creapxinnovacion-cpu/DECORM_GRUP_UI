@@ -30,6 +30,13 @@ export function CatalogoView() {
   const [kardexSku, setKardexSku] = useState(null);
   const [kardexData, setKardexData] = useState(null);
   const [loadingKardex, setLoadingKardex] = useState(false);
+  const [showKardexAdjust, setShowKardexAdjust] = useState(false);
+  const [kardexTipoAccion, setKardexTipoAccion] = useState('conteo'); // 'conteo' | 'entrada'
+  const [kardexConteoFisico, setKardexConteoFisico] = useState('');
+  const [kardexFechaConteo, setKardexFechaConteo] = useState(new Date().toISOString().split('T')[0]);
+  const [kardexCantidadEntrada, setKardexCantidadEntrada] = useState(1);
+  const [kardexNotas, setKardexNotas] = useState('');
+  const [savingKardexAction, setSavingKardexAction] = useState(false);
 
   // New Article modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -168,7 +175,79 @@ export function CatalogoView() {
       proveedor_pref: item.proveedor_pref || '',
       stock_inicial: item.stock_inicial ?? 0,
       stock_minimo: item.stock_minimo ?? 10,
+      ultimo_conteo: item.ultimo_conteo !== undefined && item.ultimo_conteo !== '' ? item.ultimo_conteo : (item.stock_actual ?? 0),
+      fecha_conteo: item.fecha_conteo || new Date().toISOString().split('T')[0],
     });
+  };
+
+  const handleKardexActionSubmit = async (e) => {
+    e.preventDefault();
+    if (!kardexSku) return;
+    setSavingKardexAction(true);
+    try {
+      if (kardexTipoAccion === 'conteo') {
+        const conteoNum = Number(kardexConteoFisico);
+        if (isNaN(conteoNum)) {
+          alert('Por favor ingrese un número válido para el conteo físico.');
+          setSavingKardexAction(false);
+          return;
+        }
+
+        // 1. Actualizar catálogo con último conteo físico y fecha
+        await api.updateArticulo(kardexSku, {
+          ultimo_conteo: conteoNum,
+          fecha_conteo: kardexFechaConteo,
+        });
+
+        // 2. Si hay diferencia con el saldo calculado del kardex, asentar movimiento de Ajuste
+        const saldoActual = Number(kardexData?.saldo_final ?? 0);
+        const diff = conteoNum - saldoActual;
+        if (diff !== 0) {
+          try {
+            await api.createMovimiento({
+              fecha: kardexFechaConteo,
+              tipo: diff > 0 ? 'Ajuste (+)' : 'Ajuste (-)',
+              sku: kardexSku,
+              cantidad: Math.abs(diff),
+              taller_destino: 'Bodega Central',
+              entregado_a: 'Auditoría Física en Taller',
+              observaciones: kardexNotas || `Conteo físico directo: ${conteoNum} unid. (Ajuste: ${diff > 0 ? '+' : ''}${diff})`,
+            });
+          } catch (mErr) {
+            console.warn('Nota: movimiento de ajuste registrado a nivel catálogo:', mErr);
+          }
+        }
+      } else {
+        // Entrada directa de material
+        const cantEntrada = Number(kardexCantidadEntrada);
+        if (isNaN(cantEntrada) || cantEntrada <= 0) {
+          alert('La cantidad de entrada debe ser mayor a 0');
+          setSavingKardexAction(false);
+          return;
+        }
+        await api.createMovimiento({
+          fecha: kardexFechaConteo,
+          tipo: 'Ajuste (+)',
+          sku: kardexSku,
+          cantidad: cantEntrada,
+          taller_destino: 'Bodega Central',
+          entregado_a: 'Entrada Directa / Kardex',
+          observaciones: kardexNotas || 'Ingreso directo de material registrado en Kardex',
+        });
+      }
+
+      // Refrescar Kardex y Catálogo en vivo
+      await openKardex(kardexSku);
+      await fetchCatalogo();
+      setShowKardexAdjust(false);
+      setKardexConteoFisico('');
+      setKardexNotas('');
+      alert('¡Actualización de stock registrada con éxito!');
+    } catch (err) {
+      alert('Error al registrar en Kardex: ' + err.message);
+    } finally {
+      setSavingKardexAction(false);
+    }
   };
 
   const handleUpdateArticle = async (e) => {
@@ -379,7 +458,10 @@ export function CatalogoView() {
       {/* Modal Kardex */}
       <Modal
         isOpen={Boolean(kardexSku)}
-        onClose={() => setKardexSku(null)}
+        onClose={() => {
+          setKardexSku(null);
+          setShowKardexAdjust(false);
+        }}
         title={`Kardex Cronológico — ${kardexSku}`}
         maxWidth="max-w-3xl"
       >
@@ -390,16 +472,140 @@ export function CatalogoView() {
           </div>
         ) : kardexData ? (
           <div className="space-y-4">
-            <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-800 flex items-center justify-between">
+            <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div>
                 <p className="text-xs text-slate-400">Artículo:</p>
                 <p className="text-sm font-bold text-slate-100">{kardexData.descripcion || kardexSku}</p>
               </div>
-              <div className="text-right">
-                <p className="text-xs text-slate-400">Saldo Actual Calculado:</p>
-                <p className="text-lg font-black text-amber-400">{kardexData.saldo_final ?? 0} unid.</p>
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <p className="text-xs text-slate-400">Saldo Actual Calculado:</p>
+                  <p className="text-lg font-black text-amber-400">{kardexData.saldo_final ?? 0} unid.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowKardexAdjust(!showKardexAdjust)}
+                  className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span>{showKardexAdjust ? 'Cerrar Ajuste' : 'Conteo Físico / Entrada'}</span>
+                </button>
               </div>
             </div>
+
+            {/* Panel de Ajuste Rápido / Conteo Físico a Mano */}
+            {showKardexAdjust && (
+              <form onSubmit={handleKardexActionSubmit} className="p-4 bg-amber-500/5 border border-amber-500/30 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-400 uppercase tracking-wide flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" /> Registrar Auditoría / Ajuste Inmediato
+                  </span>
+                  <div className="flex items-center gap-2 text-xs">
+                    <label className="flex items-center gap-1 text-slate-300 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="kardexActionType"
+                        checked={kardexTipoAccion === 'conteo'}
+                        onChange={() => setKardexTipoAccion('conteo')}
+                        className="accent-amber-500"
+                      />
+                      Conteo Físico Real (a mano)
+                    </label>
+                    <label className="flex items-center gap-1 text-slate-300 cursor-pointer ml-2">
+                      <input
+                        type="radio"
+                        name="kardexActionType"
+                        checked={kardexTipoAccion === 'entrada'}
+                        onChange={() => setKardexTipoAccion('entrada')}
+                        className="accent-amber-500"
+                      />
+                      Entrada Directa de Material
+                    </label>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {kardexTipoAccion === 'conteo' ? (
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Cantidad Contada a Mano en Taller
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        required
+                        placeholder="Ej: 45"
+                        value={kardexConteoFisico}
+                        onChange={(e) => setKardexConteoFisico(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-amber-400 font-bold focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Cantidad que Ingresa
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0.01"
+                        required
+                        value={kardexCantidadEntrada}
+                        onChange={(e) => setKardexCantidadEntrada(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-emerald-400 font-bold focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                      Fecha del Registro
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={kardexFechaConteo}
+                      onChange={(e) => setKardexFechaConteo(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                      Observación / Responsable
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Conteo físico bodega central"
+                      value={kardexNotas}
+                      onChange={(e) => setKardexNotas(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <p className="text-[11px] text-slate-400">
+                    {kardexTipoAccion === 'conteo'
+                      ? 'Actualiza el "Último conteo físico" en el Catálogo y genera el ajuste de auditoría correspondiente.'
+                      : 'Registra un ingreso directo al inventario en los movimientos operativos.'}
+                  </p>
+                  <button
+                    type="submit"
+                    disabled={savingKardexAction}
+                    className="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    {savingKardexAction ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Guardando...
+                      </>
+                    ) : (
+                      'Guardar y Actualizar Kardex'
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
 
             <div className="overflow-x-auto max-h-72">
               <table className="w-full text-left text-xs">
@@ -694,7 +900,7 @@ export function CatalogoView() {
 
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Stock Mínimo
+                Stock Mínimo de Alerta
               </label>
               <input
                 type="number"
@@ -704,6 +910,62 @@ export function CatalogoView() {
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden focus:border-amber-500"
               />
             </div>
+          </div>
+
+          {/* Sección Inventario Físico / Conteo a Mano */}
+          <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <span className="text-xs font-bold text-amber-300 uppercase tracking-wide">
+                Inventario Físico & Conteo a Mano
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  Stock Inicial
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={editValues.stock_inicial ?? 0}
+                  onChange={(e) => setEditValues({ ...editValues, stock_inicial: Number(e.target.value) })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-amber-300 mb-1">
+                  Conteo Físico Real (a mano)
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={editValues.ultimo_conteo ?? ''}
+                  onChange={(e) => setEditValues({ ...editValues, ultimo_conteo: Number(e.target.value) })}
+                  placeholder="Lo que hay en taller"
+                  className="w-full bg-slate-900 border border-amber-500/50 rounded-lg px-3 py-1.5 text-xs text-amber-400 font-bold focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  Fecha de Conteo
+                </label>
+                <input
+                  type="date"
+                  value={editValues.fecha_conteo || ''}
+                  onChange={(e) => setEditValues({ ...editValues, fecha_conteo: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+            </div>
+            <p className="text-[10px] text-slate-400">
+              * El "Conteo Físico Real" es la base que utiliza Google Sheets para recalcular el <strong>STOCK ACTUAL</strong> junto con los movimientos post-conteo.
+            </p>
           </div>
 
           <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-800">

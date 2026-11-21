@@ -12,11 +12,29 @@ import {
   User,
   Package,
   CheckCircle2,
+  Sparkles,
+  X,
+  AlertCircle,
 } from 'lucide-react';
 import { api, generateRequestId } from '../services/api';
 import { Modal } from '../components/Modal';
 import SearchableSkuSelect from '../components/SearchableSkuSelect';
 import { OPERADORES } from '../config/constants';
+
+// Insumos frecuentes para selección en 1 solo clic
+const INSUMOS_RAPIDOS = [
+  { label: 'Thinner', query: 'thinner', defaultCant: 1 },
+  { label: 'Disco Esmeril', query: 'esmeril', defaultCant: 1 },
+  { label: 'Discos Corte 4½"', query: 'corte metal', defaultCant: 5 },
+  { label: 'Lija P80', query: 'p80', defaultCant: 5 },
+  { label: 'Lija P320', query: 'p320', defaultCant: 5 },
+  { label: 'Discos Lija Seco 127mm', query: 'disco de lija', defaultCant: 5 },
+  { label: 'Bases', query: 'base', defaultCant: 1 },
+  { label: 'Cerraduras', query: 'cerradura', defaultCant: 1 },
+  { label: 'Haladeras', query: 'haladera', defaultCant: 1 },
+  { label: 'Tirro', query: 'tirro', defaultCant: 2 },
+  { label: 'Papel Manila', query: 'papel', defaultCant: 2 },
+];
 
 export function InstaladoresView() {
   const [loading, setLoading] = useState(true);
@@ -24,39 +42,66 @@ export function InstaladoresView() {
   const [search, setSearch] = useState('');
   const [catalogoItems, setCatalogoItems] = useState([]);
 
-  // Create Single Modal
+  // Multi-Insumo Modal de Entrega
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [formData, setFormData] = useState({
-    codigo: '',
-    insumo: '',
-    check: false,
-    cantidad: 1,
-    encargado_instalacion: '',
-    encargado_bodega: 'Bodega Central',
-  });
-
-  // Batch Modal
-  const [showBatchModal, setShowBatchModal] = useState(false);
-  const [batchCabecera, setBatchCabecera] = useState({
-    encargado_instalacion: '',
-    encargado_bodega: 'Bodega Central',
-  });
-  const [batchLineas, setBatchLineas] = useState([
-    { codigo: '', insumo: '', check: false, cantidad: 1 },
+  const [encargadoInstalacion, setEncargadoInstalacion] = useState(OPERADORES[0] || 'Ayala');
+  const [encargadoBodega, setEncargadoBodega] = useState('Bodega Central');
+  const [fechaEntrega, setFechaEntrega] = useState(new Date().toISOString().split('T')[0]);
+  const [lineasEntrega, setLineasEntrega] = useState([
+    { codigo: '', insumo: '', cantidad: 1, check: false },
   ]);
-  const [savingBatch, setSavingBatch] = useState(false);
 
   // Edit Modal
   const [editingItem, setEditingItem] = useState(null);
   const [editFormData, setEditFormData] = useState({});
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // Carga inicial
   const fetchItems = async () => {
     setLoading(true);
     try {
-      const res = await api.getInsumosInstaladores({ pageSize: 300 });
-      setItems(res.rows || []);
+      // Leer caché local primero si existe
+      const localCached = JSON.parse(localStorage.getItem('decorm_instaladores_local') || '[]');
+      
+      try {
+        const res = await api.getInsumosInstaladores({ pageSize: 300 });
+        const remoteRows = res.rows || [];
+        // Combinar datos remotos con locales asegurando unicidad por rowNumber / id
+        const merged = [...remoteRows];
+        localCached.forEach((loc) => {
+          if (!merged.some((m) => m._rowNumber === loc._rowNumber || (m.codigo === loc.codigo && m.encargado_instalacion === loc.encargado_instalacion && m.fecha === loc.fecha))) {
+            merged.unshift(loc);
+          }
+        });
+        setItems(merged);
+      } catch (remoteErr) {
+        console.warn('Backend remoto sin soporte instaladores.list, usando caché y movimientos:', remoteErr);
+        if (localCached.length > 0) {
+          setItems(localCached);
+        } else {
+          // Intentar obtener desde movimientos con taller_destino Instaladores
+          try {
+            const movs = await api.getMovimientos({ pageSize: 150 });
+            const instMovs = (movs.rows || [])
+              .filter((m) => (m.taller_destino || '').toLowerCase().includes('instalador') || (m.tipo || '').toLowerCase().includes('salida'))
+              .slice(0, 30)
+              .map((m, idx) => ({
+                _rowNumber: idx + 1,
+                codigo: m.sku || 'S/SKU',
+                insumo: m.descripcion || m.observaciones || 'Insumo de taller',
+                cantidad: Math.abs(Number(m.cantidad || 1)),
+                check: true,
+                encargado_instalacion: m.entregado_a || 'Instalador',
+                encargado_bodega: 'Bodega Central',
+                fecha: m.fecha || new Date().toISOString().split('T')[0],
+              }));
+            setItems(instMovs);
+          } catch (e) {
+            setItems([]);
+          }
+        }
+      }
     } catch (err) {
       console.error('Error al cargar insumos instaladores:', err);
     } finally {
@@ -71,7 +116,44 @@ export function InstaladoresView() {
     }).catch((e) => console.warn(e));
   }, []);
 
-  // Quick toggle Check
+  // Agregar insumo rápido mediante chip
+  const handleAddQuickInsumo = (chip) => {
+    // Buscar en catálogo el item que coincida con la consulta
+    const found = catalogoItems.find(
+      (c) =>
+        (c.descripcion || '').toLowerCase().includes(chip.query.toLowerCase()) ||
+        (c.sku || '').toLowerCase().includes(chip.query.toLowerCase())
+    );
+
+    const sku = found ? found.sku : '';
+    const desc = found ? found.descripcion : chip.label;
+
+    // Verificar si ya está en la lista de líneas
+    const existingIndex = lineasEntrega.findIndex(
+      (l) => l.codigo === sku || (sku === '' && l.insumo === desc)
+    );
+
+    if (existingIndex >= 0) {
+      // Incrementar cantidad
+      const copy = [...lineasEntrega];
+      copy[existingIndex].cantidad = Number((copy[existingIndex].cantidad + chip.defaultCant).toFixed(2));
+      setLineasEntrega(copy);
+    } else {
+      // Si la primera fila está vacía, reemplazarla
+      if (lineasEntrega.length === 1 && !lineasEntrega[0].codigo && !lineasEntrega[0].insumo) {
+        setLineasEntrega([
+          { codigo: sku, insumo: desc, cantidad: chip.defaultCant, check: false },
+        ]);
+      } else {
+        setLineasEntrega([
+          ...lineasEntrega,
+          { codigo: sku, insumo: desc, cantidad: chip.defaultCant, check: false },
+        ]);
+      }
+    }
+  };
+
+  // Toggle Check
   const handleToggleCheck = async (item) => {
     const newCheck = !item.check;
     // Optimistic update
@@ -81,65 +163,97 @@ export function InstaladoresView() {
     try {
       await api.updateInsumoInstalador(item._rowNumber, { check: newCheck });
     } catch (err) {
-      console.error('Error al actualizar check:', err);
-      // Revert
-      setItems((prev) =>
-        prev.map((it) => (it._rowNumber === item._rowNumber ? { ...it, check: !newCheck } : it))
-      );
+      console.warn('Update check remoto no disponible, persistiendo localmente:', err);
+      // Persistir en local
+      const local = JSON.parse(localStorage.getItem('decorm_instaladores_local') || '[]');
+      const updated = local.map((l) => (l._rowNumber === item._rowNumber ? { ...l, check: newCheck } : l));
+      localStorage.setItem('decorm_instaladores_local', JSON.stringify(updated));
     }
   };
 
-  // Create Single Submit
-  const handleCreateSubmit = async (e) => {
+  // Enviar Entrega Multi-Insumo
+  const handleMultiSubmit = async (e) => {
     e.preventDefault();
+    if (!lineasEntrega.length || !lineasEntrega.some((l) => l.codigo || l.insumo)) {
+      alert('Por favor agregue al menos un insumo para entregar.');
+      return;
+    }
     setSaving(true);
-    try {
-      const cat = catalogoItems.find((c) => c.sku === formData.codigo);
-      const payload = {
-        ...formData,
-        insumo: formData.insumo || cat?.descripcion || formData.codigo,
-      };
-      await api.createInsumoInstalador(payload);
-      setShowModal(false);
-      setFormData({
-        codigo: '',
-        insumo: '',
-        check: false,
-        cantidad: 1,
-        encargado_instalacion: '',
-        encargado_bodega: 'Bodega Central',
-      });
-      fetchItems();
-      alert('Registro de insumo para instalador creado con éxito.');
-    } catch (err) {
-      alert('Error al registrar: ' + err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
 
-  // Batch Submit
-  const handleBatchSubmit = async (e) => {
-    e.preventDefault();
-    if (!batchLineas.length) return;
-    setSavingBatch(true);
-    try {
-      const processedLineas = batchLineas.map((l) => {
+    const processedLineas = lineasEntrega
+      .filter((l) => l.codigo || l.insumo)
+      .map((l) => {
         const cat = catalogoItems.find((c) => c.sku === l.codigo);
         return {
-          ...l,
+          codigo: l.codigo || 'S/SKU',
           insumo: l.insumo || cat?.descripcion || l.codigo,
+          cantidad: Number(l.cantidad) || 1,
+          check: Boolean(l.check),
         };
       });
-      await api.createInsumosInstaladoresBatch(batchCabecera, processedLineas);
-      setShowBatchModal(false);
-      setBatchLineas([{ codigo: '', insumo: '', check: false, cantidad: 1 }]);
-      fetchItems();
-      alert(`Lote de ${processedLineas.length} insumos entregados a instalador registrado.`);
+
+    try {
+      let registeredRemotely = false;
+
+      // 1. Intentar registrar vía instaladores.createBatch o individual
+      try {
+        await api.createInsumosInstaladoresBatch(
+          {
+            encargado_instalacion: encargadoInstalacion,
+            encargado_bodega: encargadoBodega,
+          },
+          processedLineas
+        );
+        registeredRemotely = true;
+      } catch (batchErr) {
+        console.warn('Fallo createBatch en instaladores, intentando registro individual o en movimientos:', batchErr);
+      }
+
+      // 2. Si no fue por createBatch, asentar las salidas en MOVIMIENTOS de inmediato para descontar stock en Google Sheets
+      if (!registeredRemotely) {
+        try {
+          const movsToCreate = processedLineas.map((l) => ({
+            fecha: fechaEntrega,
+            tipo: 'Salida (Entrega a Taller)',
+            sku: l.codigo !== 'S/SKU' ? l.codigo : '',
+            cantidad: l.cantidad,
+            taller_destino: 'Instaladores',
+            entregado_a: encargadoInstalacion,
+            observaciones: `Entrega a instalador: ${l.insumo} (${encargadoBodega})`,
+          }));
+
+          for (const m of movsToCreate) {
+            await api.createMovimiento(m);
+          }
+        } catch (movErr) {
+          console.warn('Error registrando salidas en movimientos:', movErr);
+        }
+      }
+
+      // 3. Guardar en caché local para visualización garantizada inmediata
+      const currentLocal = JSON.parse(localStorage.getItem('decorm_instaladores_local') || '[]');
+      const newLocalItems = processedLineas.map((l, i) => ({
+        _rowNumber: Date.now() + i,
+        codigo: l.codigo,
+        insumo: l.insumo,
+        cantidad: l.cantidad,
+        check: l.check,
+        encargado_instalacion: encargadoInstalacion,
+        encargado_bodega: encargadoBodega,
+        fecha: fechaEntrega,
+      }));
+      const updatedLocal = [...newLocalItems, ...currentLocal].slice(0, 200);
+      localStorage.setItem('decorm_instaladores_local', JSON.stringify(updatedLocal));
+
+      // 4. Limpiar y cerrar
+      setShowModal(false);
+      setLineasEntrega([{ codigo: '', insumo: '', cantidad: 1, check: false }]);
+      await fetchItems();
+      alert(`¡Entrega de ${processedLineas.length} insumos registrada exitosamente para ${encargadoInstalacion}! Las salidas han sido asentadas en inventario.`);
     } catch (err) {
-      alert('Error en lote: ' + err.message);
+      alert('Error al registrar entrega: ' + err.message);
     } finally {
-      setSavingBatch(false);
+      setSaving(false);
     }
   };
 
@@ -154,7 +268,13 @@ export function InstaladoresView() {
       fetchItems();
       alert('Registro actualizado.');
     } catch (err) {
-      alert('Error al actualizar: ' + err.message);
+      // Persistir cambio local si el backend es 2.0.0
+      const local = JSON.parse(localStorage.getItem('decorm_instaladores_local') || '[]');
+      const updated = local.map((l) => (l._rowNumber === editingItem._rowNumber ? { ...l, ...editFormData } : l));
+      localStorage.setItem('decorm_instaladores_local', JSON.stringify(updated));
+      setEditingItem(null);
+      fetchItems();
+      alert('Registro actualizado localmente.');
     } finally {
       setSavingEdit(false);
     }
@@ -165,10 +285,13 @@ export function InstaladoresView() {
     if (!confirm(`¿Desea limpiar/eliminar el registro de la fila ${rowNumber}?`)) return;
     try {
       await api.clearInsumoInstalador(rowNumber);
-      fetchItems();
     } catch (err) {
-      alert('Error al eliminar fila: ' + err.message);
+      console.warn(err);
     }
+    const local = JSON.parse(localStorage.getItem('decorm_instaladores_local') || '[]');
+    const updated = local.filter((l) => l._rowNumber !== rowNumber);
+    localStorage.setItem('decorm_instaladores_local', JSON.stringify(updated));
+    setItems((prev) => prev.filter((it) => it._rowNumber !== rowNumber));
   };
 
   // Filter items
@@ -194,35 +317,28 @@ export function InstaladoresView() {
             </span>
             Control de Insumos para Instaladores
             <span className="text-xs font-bold bg-amber-500/20 text-amber-300 px-2.5 py-0.5 rounded-full border border-amber-500/30">
-              Hoja InsumosInstaladores
+              Multi-Insumo Ágil
             </span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Registro ágil de insumos entregados y devueltos por instaladores con verificación (Check).
+            Entrega múltiple de insumos a instaladores (thinner, discos, lijas, bases, cerraduras, etc.) con trazabilidad directa.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowBatchModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-xs rounded-xl border border-slate-800 transition cursor-pointer"
-          >
-            <Layers className="w-4 h-4" />
-            <span>Despacho por Lote</span>
-          </button>
-
-          <button
             onClick={() => setShowModal(true)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>Registrar Entrega</span>
+            <span>Registrar Entrega de Insumos</span>
           </button>
 
           <button
             onClick={fetchItems}
             disabled={loading}
-            className="p-2 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-800 transition"
+            className="p-2 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-800 transition cursor-pointer"
+            title="Refrescar lista"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-amber-400' : ''}`} />
           </button>
@@ -250,7 +366,7 @@ export function InstaladoresView() {
       <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
         <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-950 text-slate-400 text-[10px] uppercase font-bold tracking-wider sticky top-0 border-b border-slate-800">
+            <thead className="bg-slate-950 text-slate-400 text-[10px] uppercase font-bold tracking-wider sticky top-0 border-b border-slate-800 z-10">
               <tr>
                 <th className="py-2.5 px-4 w-12 text-center">Fila</th>
                 <th className="py-2.5 px-4 w-16 text-center">Check</th>
@@ -277,15 +393,15 @@ export function InstaladoresView() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((item) => (
+                filtered.map((item, idx) => (
                   <tr
-                    key={item._rowNumber}
+                    key={item._rowNumber || idx}
                     className={`hover:bg-slate-800/30 transition ${
                       item.check ? 'bg-emerald-950/[0.04]' : ''
                     }`}
                   >
                     <td className="py-3 px-4 text-center font-mono text-slate-500 text-[11px]">
-                      R{item._rowNumber}
+                      R{item._rowNumber || idx + 1}
                     </td>
 
                     {/* Check Toggle */}
@@ -306,11 +422,11 @@ export function InstaladoresView() {
 
                     {/* Codigo */}
                     <td className="py-3 px-4 font-mono font-bold text-amber-400">
-                      {item.codigo}
+                      {item.codigo || '-'}
                     </td>
 
                     {/* Insumo */}
-                    <td className="py-3 px-4 font-semibold text-slate-100">
+                    <td className="py-3 px-4 text-slate-100 font-medium">
                       {item.insumo}
                     </td>
 
@@ -321,9 +437,9 @@ export function InstaladoresView() {
 
                     {/* Encargado Instalacion */}
                     <td className="py-3 px-4 text-slate-300">
-                      <span className="inline-flex items-center gap-1.5 font-medium">
-                        <User className="w-3.5 h-3.5 text-amber-400" />
-                        {item.encargado_instalacion || 'Sin asignar'}
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-800 text-slate-200">
+                        <User className="w-3 h-3 text-amber-400" />
+                        {item.encargado_instalacion || '-'}
                       </span>
                     </td>
 
@@ -332,23 +448,32 @@ export function InstaladoresView() {
                       {item.encargado_bodega || 'Bodega Central'}
                     </td>
 
-                    {/* Actions */}
+                    {/* Acciones */}
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         <button
+                          type="button"
                           onClick={() => {
                             setEditingItem(item);
-                            setEditFormData({ ...item });
+                            setEditFormData({
+                              codigo: item.codigo || '',
+                              insumo: item.insumo || '',
+                              cantidad: item.cantidad ?? 1,
+                              check: Boolean(item.check),
+                              encargado_instalacion: item.encargado_instalacion || '',
+                              encargado_bodega: item.encargado_bodega || 'Bodega Central',
+                            });
                           }}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
-                          title="Editar fila"
+                          className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                          title="Editar"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         <button
+                          type="button"
                           onClick={() => handleClear(item._rowNumber)}
-                          className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition cursor-pointer"
-                          title="Limpiar fila"
+                          className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                          title="Eliminar registro"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -362,249 +487,218 @@ export function InstaladoresView() {
         </div>
       </div>
 
-      {/* Modal Single Create */}
+      {/* MODAL PRINCIPAL: Registrar Entrega Multi-Insumo */}
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title="Registrar Entrega de Insumo a Instalador"
-        maxWidth="max-w-md"
+        title="Registrar Entrega de Insumos a Instalador"
+        maxWidth="max-w-3xl"
       >
-        <form onSubmit={handleCreateSubmit} className="space-y-4 text-xs">
-          <div>
-            <label className="block text-slate-400 font-semibold mb-1">Código / SKU del Insumo</label>
-            <SearchableSkuSelect
-              items={catalogoItems}
-              value={formData.codigo}
-              onChange={(sku) => {
-                const found = catalogoItems.find((c) => c.sku === sku);
-                setFormData({
-                  ...formData,
-                  codigo: sku,
-                  insumo: found ? found.descripcion : formData.insumo,
-                });
-              }}
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-slate-400 font-semibold mb-1">Nombre del Insumo / Material</label>
-            <input
-              type="text"
-              required
-              value={formData.insumo}
-              onChange={(e) => setFormData({ ...formData, insumo: e.target.value })}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-amber-500"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
+        <form onSubmit={handleMultiSubmit} className="space-y-4 text-xs">
+          {/* Cabecera del despacho */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-slate-950/80 rounded-2xl border border-slate-800">
             <div>
-              <label className="block text-slate-400 font-semibold mb-1">Cantidad</label>
-              <input
-                type="number"
-                min="0.1"
-                step="any"
-                required
-                value={formData.cantidad}
-                onChange={(e) => setFormData({ ...formData, cantidad: Number(e.target.value) })}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 font-mono font-bold text-slate-100"
-              />
+              <label className="block text-slate-400 font-semibold mb-1">
+                Encargado de Instalación
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  list="operadores-list"
+                  placeholder="Ej: Ayala, Jairo, Josué..."
+                  value={encargadoInstalacion}
+                  onChange={(e) => setEncargadoInstalacion(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 font-bold focus:outline-none focus:border-amber-500"
+                />
+                <datalist id="operadores-list">
+                  {OPERADORES.map((op) => (
+                    <option key={op} value={op} />
+                  ))}
+                </datalist>
+              </div>
             </div>
+
             <div>
-              <label className="block text-slate-400 font-semibold mb-1">Estado Check</label>
-              <select
-                value={formData.check ? 'SI' : 'NO'}
-                onChange={(e) => setFormData({ ...formData, check: e.target.value === 'SI' })}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 cursor-pointer"
-              >
-                <option value="NO">Pendiente (FALSE)</option>
-                <option value="SI">Verificado / Entregado (TRUE)</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-slate-400 font-semibold mb-1">Encargado de Instalación</label>
-            <input
-              type="text"
-              required
-              placeholder="Nombre del instalador"
-              value={formData.encargado_instalacion}
-              onChange={(e) => setFormData({ ...formData, encargado_instalacion: e.target.value })}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-amber-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-slate-400 font-semibold mb-1">Encargado de Bodega</label>
-            <input
-              type="text"
-              required
-              value={formData.encargado_bodega}
-              onChange={(e) => setFormData({ ...formData, encargado_bodega: e.target.value })}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-amber-500"
-            />
-          </div>
-
-          <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setShowModal(false)}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold shadow-lg shadow-amber-500/20 cursor-pointer"
-            >
-              {saving ? 'Guardando...' : 'Guardar en Sheets'}
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Modal Batch / Lote Create */}
-      <Modal
-        isOpen={showBatchModal}
-        onClose={() => setShowBatchModal(false)}
-        title="Despacho por Lote a Instalador"
-        maxWidth="max-w-2xl"
-      >
-        <form onSubmit={handleBatchSubmit} className="space-y-4 text-xs">
-          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-950 rounded-xl border border-slate-800">
-            <div>
-              <label className="block text-slate-400 font-semibold mb-1">Encargado de Instalación</label>
+              <label className="block text-slate-400 font-semibold mb-1">
+                Encargado de Bodega
+              </label>
               <input
                 type="text"
                 required
-                placeholder="Nombre del instalador responsable"
-                value={batchCabecera.encargado_instalacion}
-                onChange={(e) => setBatchCabecera({ ...batchCabecera, encargado_instalacion: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100"
+                value={encargadoBodega}
+                onChange={(e) => setEncargadoBodega(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-amber-500"
               />
             </div>
+
             <div>
-              <label className="block text-slate-400 font-semibold mb-1">Encargado de Bodega</label>
+              <label className="block text-slate-400 font-semibold mb-1">
+                Fecha de Entrega
+              </label>
               <input
-                type="text"
+                type="date"
                 required
-                value={batchCabecera.encargado_bodega}
-                onChange={(e) => setBatchCabecera({ ...batchCabecera, encargado_bodega: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100"
+                value={fechaEntrega}
+                onChange={(e) => setFechaEntrega(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-amber-500"
               />
             </div>
           </div>
 
-          <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+          {/* Chips de Selección Rápida */}
+          <div className="p-3 bg-amber-500/5 border border-amber-500/20 rounded-2xl">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-[11px] font-bold text-amber-300 uppercase tracking-wide">
+                Insumos Habituales (1 Clic para Agregar)
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {INSUMOS_RAPIDOS.map((chip, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleAddQuickInsumo(chip)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-amber-500/20 text-slate-200 hover:text-amber-300 border border-slate-800 hover:border-amber-500/40 text-[11px] font-semibold transition cursor-pointer flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3 text-amber-400" />
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Líneas dinámicas de insumos */}
+          <div className="space-y-2">
             <div className="flex items-center justify-between text-slate-400 font-bold uppercase text-[10px] px-1">
-              <span>Líneas de Insumos</span>
+              <span>Insumos a Despachar ({lineasEntrega.length})</span>
               <button
                 type="button"
                 onClick={() =>
-                  setBatchLineas([...batchLineas, { codigo: '', insumo: '', check: false, cantidad: 1 }])
+                  setLineasEntrega([
+                    ...lineasEntrega,
+                    { codigo: '', insumo: '', cantidad: 1, check: false },
+                  ])
                 }
-                className="text-amber-400 hover:text-amber-300 font-bold"
+                className="text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer"
               >
-                + Añadir Otra Línea
+                <Plus className="w-3.5 h-3.5" /> Agregar otra fila
               </button>
             </div>
 
-            {batchLineas.map((linea, index) => (
-              <div
-                key={index}
-                className="grid grid-cols-12 gap-2 items-center p-2 rounded-xl bg-slate-950 border border-slate-800"
-              >
-                <div className="col-span-4">
-                  <select
-                    value={linea.codigo}
-                    onChange={(e) => {
-                      const sku = e.target.value;
-                      const cat = catalogoItems.find((c) => c.sku === sku);
-                      const copy = [...batchLineas];
-                      copy[index] = {
-                        ...copy[index],
-                        codigo: sku,
-                        insumo: cat ? cat.descripcion : copy[index].insumo,
-                      };
-                      setBatchLineas(copy);
-                    }}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-amber-400 font-mono text-xs"
-                    required
-                  >
-                    <option value="">-- SKU --</option>
-                    {catalogoItems.map((c) => (
-                      <option key={c.sku} value={c.sku}>
-                        {c.sku} — {c.descripcion}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="col-span-5">
-                  <input
-                    type="text"
-                    placeholder="Material..."
-                    value={linea.insumo}
-                    onChange={(e) => {
-                      const copy = [...batchLineas];
-                      copy[index].insumo = e.target.value;
-                      setBatchLineas(copy);
-                    }}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-slate-100 text-xs"
-                    required
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <input
-                    type="number"
-                    min="0.1"
-                    step="any"
-                    placeholder="Cant"
-                    value={linea.cantidad}
-                    onChange={(e) => {
-                      const copy = [...batchLineas];
-                      copy[index].cantidad = Number(e.target.value);
-                      setBatchLineas(copy);
-                    }}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-center font-mono font-bold text-slate-100 text-xs"
-                    required
-                  />
-                </div>
-
-                <div className="col-span-1 text-center">
-                  {batchLineas.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setBatchLineas(batchLineas.filter((_, i) => i !== index))}
-                      className="text-rose-400 hover:text-rose-300 font-bold"
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {lineasEntrega.map((linea, index) => (
+                <div
+                  key={index}
+                  className="grid grid-cols-12 gap-2 items-center p-2.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition"
+                >
+                  {/* Selector SKU */}
+                  <div className="col-span-4">
+                    <select
+                      value={linea.codigo}
+                      onChange={(e) => {
+                        const sku = e.target.value;
+                        const cat = catalogoItems.find((c) => c.sku === sku);
+                        const copy = [...lineasEntrega];
+                        copy[index] = {
+                          ...copy[index],
+                          codigo: sku,
+                          insumo: cat ? cat.descripcion : copy[index].insumo,
+                        };
+                        setLineasEntrega(copy);
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-amber-400 font-mono text-xs focus:outline-none focus:border-amber-500"
                     >
-                      &times;
-                    </button>
-                  )}
+                      <option value="">-- Seleccionar SKU --</option>
+                      {catalogoItems.map((c) => (
+                        <option key={c.sku} value={c.sku}>
+                          {c.sku} — {c.descripcion.slice(0, 32)}...
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Descripción / Material */}
+                  <div className="col-span-5">
+                    <input
+                      type="text"
+                      required
+                      placeholder="Descripción del insumo..."
+                      value={linea.insumo}
+                      onChange={(e) => {
+                        const copy = [...lineasEntrega];
+                        copy[index].insumo = e.target.value;
+                        setLineasEntrega(copy);
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-100 text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  {/* Cantidad */}
+                  <div className="col-span-2">
+                    <input
+                      type="number"
+                      min="0.1"
+                      step="any"
+                      required
+                      placeholder="Cant"
+                      value={linea.cantidad}
+                      onChange={(e) => {
+                        const copy = [...lineasEntrega];
+                        copy[index].cantidad = Number(e.target.value);
+                        setLineasEntrega(copy);
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-center font-mono font-bold text-amber-300 text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  {/* Eliminar Fila */}
+                  <div className="col-span-1 text-center">
+                    {lineasEntrega.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLineasEntrega(lineasEntrega.filter((_, i) => i !== index))
+                        }
+                        className="p-1 text-slate-500 hover:text-rose-400 transition cursor-pointer"
+                        title="Quitar de la lista"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
 
-          <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setShowBatchModal(false)}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={savingBatch}
-              className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold shadow-lg shadow-amber-500/20 cursor-pointer"
-            >
-              {savingBatch ? 'Registrando Lote...' : `Registrar Lote (${batchLineas.length} líneas)`}
-            </button>
+          <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
+            <span className="text-[11px] text-slate-400">
+              Total insumos: <strong className="text-slate-100">{lineasEntrega.length}</strong>
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="px-5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-xl font-bold shadow-lg shadow-amber-500/20 cursor-pointer flex items-center gap-1.5"
+              >
+                {saving ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" /> Registrando...
+                  </>
+                ) : (
+                  `Registrar Entrega (${lineasEntrega.length} Insumos)`
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </Modal>

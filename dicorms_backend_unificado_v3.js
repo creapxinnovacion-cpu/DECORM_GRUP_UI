@@ -64,6 +64,8 @@ const SCHEMA = {
       sku_anterior: 'SKU anterior / cód. proveedor',
       stock_inicial: 'Stock inicial',
       stock_minimo: 'Stock mínimo',
+      ultimo_conteo: 'Último conteo físico',
+      fecha_conteo: 'Fecha conteo',
     },
     computed: {
       grupo_gasto: 'Grupo de gasto',
@@ -71,8 +73,6 @@ const SCHEMA = {
       otras_entradas: 'Otras entradas',
       salidas: 'Salidas',
       stock_teorico: 'Stock teórico',
-      ultimo_conteo: 'Último conteo físico',
-      fecha_conteo: 'Fecha conteo',
       mov_neto_post_conteo: 'Mov. neto post-conteo',
       stock_actual: 'STOCK ACTUAL',
       dif_conteo_vs_teorico: 'Dif. conteo vs teórico',
