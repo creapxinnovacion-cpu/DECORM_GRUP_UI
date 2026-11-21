@@ -12,17 +12,19 @@ import {
   Layers,
   ArrowRight,
   ClipboardList,
+  ShieldCheck,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
 
 export function ConciliacionView() {
-  const [activeTab, setActiveTab] = useState('conciliacion'); // 'conciliacion' | 'equivalencias' | 'seguimiento'
+  const [activeTab, setActiveTab] = useState('conciliacion'); // 'conciliacion' | 'equivalencias' | 'seguimiento' | 'calidad'
   const [loading, setLoading] = useState(true);
   const [conciliacionData, setConciliacionData] = useState(null);
   const [equivalencias, setEquivalencias] = useState([]);
   const [seguimiento, setSeguimiento] = useState([]);
+  const [calidadData, setCalidadData] = useState(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('TODOS');
 
@@ -48,6 +50,8 @@ export function ConciliacionView() {
       setEquivalencias(eqRes.rows || []);
       const segRes = await api.getSeguimiento({ pageSize: 50 });
       setSeguimiento(segRes.rows || []);
+      const calRes = await api.getCalidadDatos().catch(() => null);
+      setCalidadData(calRes);
     } catch (err) {
       console.error('Error al cargar conciliación:', err);
     } finally {
@@ -149,6 +153,22 @@ export function ConciliacionView() {
               }`}
             >
               Conteo Físico (INS)
+            </button>
+            <button
+              onClick={() => setActiveTab('calidad')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'calidad'
+                  ? 'bg-purple-500 text-white shadow-md'
+                  : 'text-purple-400 hover:text-white'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Calidad de Datos (R-46)
+              {calidadData && calidadData.total_errores > 0 && (
+                <span className="bg-rose-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full">
+                  {calidadData.total_errores}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -487,6 +507,103 @@ export function ConciliacionView() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Tab Calidad de Datos (R-46) */}
+      {activeTab === 'calidad' && (
+        <div className="space-y-6">
+          {/* Header Score de Salud de Datos */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse"></span>
+                <h3 className="text-lg font-black text-slate-100 flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-purple-400" />
+                  Auditoría de Higiene y Calidad de Datos (R-46)
+                </h3>
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                Monitoreo automático de los 8 controles obligatorios en Compras, Catálogo, Movimientos y Puertas.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-4 bg-slate-950/80 border border-slate-800 p-3 rounded-xl shrink-0">
+              <div className="text-right">
+                <span className="text-[10px] uppercase font-bold text-slate-500 block">Salud Global</span>
+                <span className="text-2xl font-black text-purple-400">
+                  {calidadData ? `${calidadData.score_salud}%` : '100%'}
+                </span>
+              </div>
+              <div className="border-l border-slate-800 pl-3">
+                <span className="text-[10px] uppercase font-bold text-slate-500 block">Total Hallazgos</span>
+                <span
+                  className={`text-2xl font-black ${
+                    calidadData && calidadData.total_errores > 0
+                      ? 'text-rose-400'
+                      : 'text-emerald-400'
+                  }`}
+                >
+                  {calidadData ? calidadData.total_errores : 0}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Grid de los 8 Controles */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {(calidadData?.controles || []).map((ctrl) => (
+              <div
+                key={ctrl.id}
+                className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <h4 className="text-sm font-bold text-slate-100">{ctrl.titulo}</h4>
+                    <span
+                      className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                        ctrl.count === 0
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                          : ctrl.severidad === 'CRITICA'
+                          ? 'bg-rose-500/10 text-rose-400 border-rose-500/30 animate-pulse'
+                          : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                      }`}
+                    >
+                      {ctrl.count === 0 ? 'CUMPLE (0)' : `${ctrl.count} pendientes`}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-400 mb-3">
+                    {ctrl.id === 'c1' && 'Compras sin proveedor preferido asignado.'}
+                    {ctrl.id === 'c2' && 'Compras registradas con precio $0 o vacío.'}
+                    {ctrl.id === 'c3' && 'DTE en estado Pendiente por más de 5 días hábiles.'}
+                    {ctrl.id === 'c4' && 'Artículos del catálogo sin stock mínimo configurado.'}
+                    {ctrl.id === 'c5' && 'Artículos sin proveedor preferido vinculado.'}
+                    {ctrl.id === 'c6' && 'Artículos con saldo teórico negativo (distorsionan reposición).'}
+                    {ctrl.id === 'c7' && 'Salidas o movimientos con taller no canónico.'}
+                    {ctrl.id === 'c8' && 'Puertas en producción sin taller asignado.'}
+                  </p>
+                </div>
+
+                {ctrl.count > 0 && (
+                  <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 text-[11px] text-slate-300">
+                    <span className="font-semibold text-amber-400 block mb-1">
+                      Ejemplos para resolver:
+                    </span>
+                    <ul className="space-y-0.5 list-disc list-inside text-slate-400">
+                      {(ctrl.items || []).slice(0, 3).map((it, idx) => (
+                        <li key={idx} className="truncate">
+                          {it.sku
+                            ? `${it.sku} - ${it.descripcion || ''}`
+                            : it.id_factura || it.id || 'Registro'}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}

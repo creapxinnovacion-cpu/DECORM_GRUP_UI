@@ -18,7 +18,7 @@ import { api } from '../../services/api';
 import AlertBadge from '../../components/forecast/AlertBadge';
 import ConfidencePill from '../../components/forecast/ConfidencePill';
 
-export function AlertsCenterView({ onSelectSku, onNavigatePlan }) {
+export function AlertsCenterView({ onSelectSku, onNavigatePlan, onNavigateCotizaciones }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState({ resumen: {}, alertas: [] });
   const [incluirGris, setIncluirGris] = useState(false);
@@ -87,9 +87,18 @@ export function AlertsCenterView({ onSelectSku, onNavigatePlan }) {
         </div>
 
         <div className="flex items-center gap-2">
+          {onNavigateCotizaciones && (
+            <button
+              onClick={onNavigateCotizaciones}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-rose-950/30 cursor-pointer min-h-[38px]"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Cotizar Alertas (1.9x)</span>
+            </button>
+          )}
           <button
             onClick={() => onNavigatePlan && onNavigatePlan()}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold transition shadow-lg shadow-amber-500/20 cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold transition shadow-lg shadow-amber-500/20 cursor-pointer min-h-[38px]"
           >
             <ShoppingCart className="w-4 h-4" />
             <span>Ver Plan Semanal</span>

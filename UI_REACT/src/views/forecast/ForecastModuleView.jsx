@@ -45,7 +45,7 @@ export function ForecastModuleView({ onNavigateRoot }) {
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
             <span className="font-extrabold uppercase tracking-wider text-slate-200">
-              Módulo v3.0 · Abastecimiento Inteligente & Forecast Engine
+              Módulo v4.1 · Abastecimiento Inteligente & Forecast Engine
             </span>
           </div>
           <span className="text-[11px] text-slate-400 font-mono">
@@ -90,6 +90,7 @@ export function ForecastModuleView({ onNavigateRoot }) {
           <AlertsCenterView
             onSelectSku={handleSelectSku}
             onNavigatePlan={() => setActiveSubTab('compras')}
+            onNavigateCotizaciones={() => onNavigateRoot && onNavigateRoot('cotizaciones')}
           />
         )}
         {activeSubTab === 'tablero' && (

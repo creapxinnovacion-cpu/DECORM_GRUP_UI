@@ -4,6 +4,7 @@ import {
   Truck,
   DoorOpen,
   Sparkles,
+  FileText,
   ShoppingCart,
   Boxes,
   LayoutDashboard,
@@ -62,6 +63,7 @@ export function Sidebar({ activeTab, setActiveTab, onRefresh, refreshing }) {
           icon: Sparkles,
           badge: criticalCount > 0 ? criticalCount : null,
         },
+        { id: 'cotizaciones', label: 'Cotizaciones', shortLabel: 'Cotiz.', icon: FileText },
         { id: 'compras', label: 'Compras', shortLabel: 'Compras', icon: ShoppingCart },
         { id: 'catalogo', label: 'Catálogo', shortLabel: 'Catálogo', icon: Boxes },
       ],
@@ -229,7 +231,7 @@ export function Sidebar({ activeTab, setActiveTab, onRefresh, refreshing }) {
 
           {/* Versión sutil */}
           <div className="hidden xl:block pt-1 text-center text-[10px] text-slate-500 font-mono">
-            DECORM v3.1 · IA & Sheets
+            DECORM v4.1.0.0 · Clean Code
           </div>
         </div>
       </aside>
@@ -309,6 +311,7 @@ export function Sidebar({ activeTab, setActiveTab, onRefresh, refreshing }) {
             <div className="grid grid-cols-2 gap-2.5">
               {[
                 { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+                { id: 'cotizaciones', label: 'Cotizaciones', icon: FileText },
                 { id: 'compras', label: 'Compras & DTE', icon: ShoppingCart },
                 { id: 'catalogo', label: 'Catálogo & Kardex', icon: Boxes },
                 { id: 'conciliacion', label: 'Conciliación', icon: Scale },

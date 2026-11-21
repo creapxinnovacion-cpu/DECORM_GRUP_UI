@@ -13,6 +13,7 @@ import {
   Truck,
   CheckCircle2,
   RefreshCw,
+  FileText,
 } from 'lucide-react';
 import {
   BarChart,
@@ -31,7 +32,7 @@ import { api } from '../services/api';
 import { Badge } from '../components/Badge';
 import { TALLERES, MESES_OPCIONES } from '../config/constants';
 
-export function DashboardView() {
+export function DashboardView({ onNavigateTab }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -180,6 +181,17 @@ export function DashboardView() {
                 <option value="5" className="bg-slate-900">±5 unid.</option>
               </select>
             </div>
+
+            {/* Botón Acceso Rápido a Cotizaciones */}
+            {onNavigateTab && (
+              <button
+                onClick={() => onNavigateTab('cotizaciones')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-md shadow-amber-500/20 cursor-pointer min-h-[38px] transition-all transform active:scale-95"
+              >
+                <FileText className="w-4 h-4" />
+                Módulo Cotizaciones
+              </button>
+            )}
           </div>
         </div>
       </div>

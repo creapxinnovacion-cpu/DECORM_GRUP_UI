@@ -6,6 +6,7 @@ import { LoginModal } from './components/LoginModal';
 import { DashboardView } from './views/DashboardView';
 import { CatalogoView } from './views/CatalogoView';
 import { ComprasView } from './views/ComprasView';
+import { CotizacionesView } from './views/CotizacionesView';
 import { MovimientosView } from './views/MovimientosView';
 import { ConciliacionView } from './views/ConciliacionView';
 import { PrestamosView } from './views/PrestamosView';
@@ -64,9 +65,14 @@ function MainLayout() {
           {activeTab === 'forecast' && (
             <ForecastModuleView onNavigateRoot={(tab) => setActiveTab(tab)} />
           )}
+          {activeTab === 'cotizaciones' && (
+            <CotizacionesView onNavigateCompras={() => setActiveTab('compras')} />
+          )}
           {activeTab === 'compras' && <ComprasView />}
           {activeTab === 'catalogo' && <CatalogoView />}
-          {activeTab === 'dashboard' && <DashboardView />}
+          {activeTab === 'dashboard' && (
+            <DashboardView onNavigateTab={(tab) => setActiveTab(tab)} />
+          )}
           {activeTab === 'conciliacion' && <ConciliacionView />}
           {activeTab === 'prestamos' && <PrestamosView />}
         </main>

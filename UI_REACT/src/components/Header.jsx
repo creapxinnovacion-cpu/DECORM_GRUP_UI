@@ -4,6 +4,7 @@ import {
   Truck,
   DoorOpen,
   Sparkles,
+  FileText,
   ShoppingCart,
   Boxes,
   LayoutDashboard,
@@ -22,9 +23,14 @@ const MODULE_META = {
     icon: LayoutDashboard,
   },
   forecast: {
-    title: 'Abastecimiento Inteligente & Forecast Engine v3.0',
+    title: 'Abastecimiento Inteligente & Forecast Engine v4.1',
     desc: 'Monitoreo de riesgo de rotura, puntos de reorden (ROP) y compras sugeridas.',
     icon: Sparkles,
+  },
+  cotizaciones: {
+    title: 'Módulo Maestro de Cotizaciones',
+    desc: 'Generador multi-proveedor con checkboxes, factor 1.9x y exportación para Finanzas o WhatsApp.',
+    icon: FileText,
   },
   catalogo: {
     title: 'Catálogo Maestro & Kardex',

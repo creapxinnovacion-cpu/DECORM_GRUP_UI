@@ -110,3 +110,72 @@ export const FAMILIAS_PREFIJOS = [
   { prefix: 'VID', label: 'VID — Vidrio' },
   { prefix: 'LIV', label: 'LIV — Construcción Liviana' },
 ];
+
+export const ESTADOS_COTIZACION = [
+  'BORRADOR',
+  'APROBADA',
+  'ENVIADA',
+  'RECIBIDA',
+  'CANCELADA',
+];
+
+export const TIPOS_ITEM_COTIZACION = [
+  'MATERIAL',
+  'INSUMO',
+  'EQUIPO',
+];
+
+export const PROVEEDORES_CONFIG = [
+  {
+    nombre: 'Freund',
+    contacto: 'Douglas Alexander Malia',
+    tel: '7938-9675',
+    pago: 'Transferencia',
+    incluyeIva: false,
+    notaFiscal: 'Precios SIN IVA (+13% al pie)',
+  },
+  {
+    nombre: 'Didelco',
+    contacto: 'Elizabeth Abigail Muñoz',
+    tel: '7354-5713',
+    pago: 'Transferencia',
+    incluyeIva: false,
+    notaFiscal: 'Precios SIN IVA (+13% al pie)',
+  },
+  {
+    nombre: 'Lemus',
+    contacto: 'Vanessa Constante',
+    tel: '7964-3126',
+    pago: 'Transferencia',
+    incluyeIva: true,
+    notaFiscal: 'Precios INCLUYEN IVA (Costo neto = precio / 1.13)',
+  },
+  {
+    nombre: 'TODOKOLOR',
+    contacto: 'David Martines',
+    tel: '6066-0806',
+    pago: 'Transferencia',
+    incluyeIva: false,
+    notaFiscal: 'Precios SIN IVA (+13% al pie)',
+  },
+  {
+    nombre: 'Golem Abrasivos',
+    contacto: 'Golem',
+    tel: '7016-7755',
+    pago: 'Transferencia',
+    incluyeIva: false,
+    notaFiscal: 'Precios SIN IVA (+13% al pie)',
+  },
+  {
+    nombre: 'Por asignar',
+    contacto: 'Pendiente',
+    tel: 'N/D',
+    pago: 'Contado',
+    incluyeIva: false,
+    notaFiscal: 'Condición comercial por definir',
+  },
+];
+
+export const FACTOR_PEDIDO_DEFAULT = 1.9;
+export const TASA_IVA_DEFAULT = 0.13;
+
