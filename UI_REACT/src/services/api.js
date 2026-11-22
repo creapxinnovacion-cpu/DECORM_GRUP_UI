@@ -661,20 +661,22 @@ function saveLocalCotizacion(cabecera, lineas) {
     let iva = 0;
     let totLinea = 0;
 
-    if (incl && cant > 0 && precioUnit > 0) {
+    if (incl && cant > 0) {
       marcados += 1;
-      if (incluyeIva) {
-        totLinea = Number((cant * precioUnit).toFixed(2));
-        subNeto = Number((totLinea / 1.13).toFixed(2));
-        iva = Number((totLinea - subNeto).toFixed(2));
-      } else {
-        subNeto = Number((cant * precioUnit).toFixed(2));
-        iva = Number((subNeto * 0.13).toFixed(2));
-        totLinea = Number((subNeto + iva).toFixed(2));
+      if (precioUnit > 0) {
+        if (incluyeIva) {
+          totLinea = Number((cant * precioUnit).toFixed(2));
+          subNeto = Number((totLinea / 1.13).toFixed(2));
+          iva = Number((totLinea - subNeto).toFixed(2));
+        } else {
+          subNeto = Number((cant * precioUnit).toFixed(2));
+          iva = Number((subNeto * 0.13).toFixed(2));
+          totLinea = Number((subNeto + iva).toFixed(2));
+        }
+        subtotalNeto += subNeto;
+        totalIva += iva;
+        totalGeneral += totLinea;
       }
-      subtotalNeto += subNeto;
-      totalIva += iva;
-      totalGeneral += totLinea;
     }
 
     return {
@@ -741,9 +743,57 @@ function updateLocalCotizacion(cot_id, changes) {
   if (idx < 0) throw new Error(`Cotización ${cot_id} no encontrada`);
 
   const current = list[idx];
+  const lineas = changes.lineas || current.lineas || [];
+  const incluyeIva = changes.precios_incluyen_iva !== undefined ? Boolean(changes.precios_incluyen_iva) : Boolean(current.precios_incluyen_iva);
+
+  let subtotalNeto = 0;
+  let totalIva = 0;
+  let totalGeneral = 0;
+  let marcados = 0;
+
+  const processedLineas = lineas.map((l) => {
+    const incl = Boolean(l.incluir);
+    const cant = Number(l.cantidad || 0);
+    const precioUnit = Number(l.precio_unitario || 0);
+    let subNeto = 0;
+    let iva = 0;
+    let totLinea = 0;
+
+    if (incl && cant > 0) {
+      marcados += 1;
+      if (precioUnit > 0) {
+        if (incluyeIva) {
+          totLinea = Number((cant * precioUnit).toFixed(2));
+          subNeto = Number((totLinea / 1.13).toFixed(2));
+          iva = Number((totLinea - subNeto).toFixed(2));
+        } else {
+          subNeto = Number((cant * precioUnit).toFixed(2));
+          iva = Number((subNeto * 0.13).toFixed(2));
+          totLinea = Number((subNeto + iva).toFixed(2));
+        }
+        subtotalNeto += subNeto;
+        totalIva += iva;
+        totalGeneral += totLinea;
+      }
+    }
+
+    return {
+      ...l,
+      incluir: incl,
+      subtotal_neto: subNeto,
+      iva_13: iva,
+      total_linea: totLinea,
+    };
+  });
+
   const updated = {
     ...current,
     ...changes,
+    lineas: processedLineas,
+    items_marcados: marcados,
+    subtotal_neto: Number(subtotalNeto.toFixed(2)),
+    iva_13: Number(totalIva.toFixed(2)),
+    total: Number(totalGeneral.toFixed(2)),
     updated_at: new Date().toISOString(),
   };
 

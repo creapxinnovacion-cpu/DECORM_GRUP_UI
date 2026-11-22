@@ -206,24 +206,26 @@ export function CotizacionesView({ onNavigateCompras }) {
     let itemsMarcados = 0;
 
     formLineas.forEach((l) => {
-      if (l.incluir && Number(l.cantidad) > 0 && Number(l.precio_unitario) > 0) {
+      const cant = Number(l.cantidad) || 0;
+      const precio = Number(l.precio_unitario) || 0;
+      if (l.incluir && cant > 0) {
         itemsMarcados += 1;
-        const cant = Number(l.cantidad);
-        const precio = Number(l.precio_unitario);
-        if (incluyeIva) {
-          const tot = cant * precio;
-          const neto = tot / 1.13;
-          const iva = tot - neto;
-          subtotalNeto += neto;
-          totalIva += iva;
-          totalGeneral += tot;
-        } else {
-          const neto = cant * precio;
-          const iva = neto * 0.13;
-          const tot = neto + iva;
-          subtotalNeto += neto;
-          totalIva += iva;
-          totalGeneral += tot;
+        if (precio > 0) {
+          if (incluyeIva) {
+            const tot = cant * precio;
+            const neto = tot / 1.13;
+            const iva = tot - neto;
+            subtotalNeto += neto;
+            totalIva += iva;
+            totalGeneral += tot;
+          } else {
+            const neto = cant * precio;
+            const iva = neto * 0.13;
+            const tot = neto + iva;
+            subtotalNeto += neto;
+            totalIva += iva;
+            totalGeneral += tot;
+          }
         }
       }
     });
@@ -314,13 +316,28 @@ export function CotizacionesView({ onNavigateCompras }) {
 
   // Guardar cotización (Crear o Actualizar)
   const handleGuardarCotizacion = async (nuevoEstado = null) => {
+    if (formLineas.length === 0) {
+      alert('Debes agregar al menos un ítem a la cotización antes de guardar.');
+      return;
+    }
     const estadoFinal = nuevoEstado || formCabecera.estado || 'BORRADOR';
+
+    if (estadoFinal === 'APROBADA' && calculosFormulario.itemsMarcados === 0) {
+      alert('Para aprobar la cotización para Finanzas, debes marcar al menos un ítem con el checkbox.');
+      return;
+    }
+
     const cabeceraFinal = {
       ...formCabecera,
       estado: estadoFinal,
+      items_marcados: calculosFormulario.itemsMarcados,
+      subtotal_neto: calculosFormulario.subtotalNeto,
+      iva_13: calculosFormulario.totalIva,
+      total: calculosFormulario.totalGeneral,
     };
 
     try {
+      setLoading(true);
       if (formCabecera.cotizacion_id) {
         await api.updateCotizacion(formCabecera.cotizacion_id, {
           ...cabeceraFinal,
@@ -330,9 +347,11 @@ export function CotizacionesView({ onNavigateCompras }) {
         await api.createCotizacion(cabeceraFinal, formLineas);
       }
       setShowEditorModal(false);
-      fetchData();
+      await fetchData();
     } catch (err) {
       alert('Error al guardar cotización: ' + err.message);
+    } finally {
+      setLoading(false);
     }
   };
 

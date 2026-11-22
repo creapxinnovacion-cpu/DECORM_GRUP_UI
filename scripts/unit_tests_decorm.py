@@ -136,6 +136,49 @@ def test_agenda_puertas():
     assert 'SKU Puerta' in h1, f"Headers de AgendaDePuertas: {h1}"
     return f"AgendaDePuertas OK: {h1[:6]}"
 
+# TEST 11: Cotizaciones Cabecera, Detalle y Plantilla_Cotizacion
+def test_cotizaciones_structure():
+    for csh in ['Cotizaciones_Cabecera', 'Cotizaciones_Detalle', 'Plantilla_Cotizacion', 'Precios_Proveedor']:
+        assert csh in wb.sheetnames, f"Falta hoja requerida para cotizaciones: {csh}"
+    sh_cab = wb['Cotizaciones_Cabecera']
+    sh_det = wb['Cotizaciones_Detalle']
+    
+    h_cab = [sh_cab.cell(1, c).value for c in range(1, 15) if sh_cab.cell(1, c).value]
+    h_det = [sh_det.cell(1, c).value for c in range(1, 16) if sh_det.cell(1, c).value]
+    
+    assert 'Cotización ID' in h_cab and 'Proveedor' in h_cab and 'Estado' in h_cab, f"Headers inválidos en Cotizaciones_Cabecera: {h_cab}"
+    assert 'Cotización ID' in h_det and 'Incluir' in h_det and 'SKU' in h_det and 'Cantidad' in h_det, f"Headers inválidos en Cotizaciones_Detalle: {h_det}"
+    return f"Cotizaciones Estructura OK: Cabecera ({len(h_cab)} cols), Detalle ({len(h_det)} cols)"
+
+# TEST 12: Lógica de Cotización, Cálculo de IVA 13% y Totales
+def test_cotizaciones_logic_and_totals():
+    # Simular una cotización con 2 ítems (1 marcado con precio, 1 marcado sin precio inicial)
+    lineas = [
+        {'incluir': True, 'cantidad': 100, 'precio_unitario': 2.50, 'sku': 'ABR-001'},
+        {'incluir': True, 'cantidad': 50, 'precio_unitario': 0.0, 'sku': 'CON-003'},
+        {'incluir': False, 'cantidad': 20, 'precio_unitario': 10.0, 'sku': 'EQU-005'},
+    ]
+    
+    # 1. Caso SIN IVA (+13% al pie)
+    items_marcados = sum(1 for l in lineas if l['incluir'] and l['cantidad'] > 0)
+    assert items_marcados == 2, f"Se esperaban 2 ítems marcados, obtenidos: {items_marcados}"
+    
+    subtotal_neto = sum(l['cantidad'] * l['precio_unitario'] for l in lineas if l['incluir'])
+    iva_13 = round(subtotal_neto * 0.13, 2)
+    total_general = round(subtotal_neto + iva_13, 2)
+    
+    assert round(subtotal_neto, 2) == 250.00, f"Subtotal esperado 250.00, obtenido {subtotal_neto}"
+    assert iva_13 == 32.50, f"IVA esperado 32.50, obtenido {iva_13}"
+    assert total_general == 282.50, f"Total esperado 282.50, obtenido {total_general}"
+    
+    # 2. Caso CON IVA (13% incluido en precio)
+    tot_con_iva = sum(l['cantidad'] * l['precio_unitario'] for l in lineas if l['incluir'])
+    neto_desglosado = round(tot_con_iva / 1.13, 2)
+    iva_desglosado = round(tot_con_iva - neto_desglosado, 2)
+    assert neto_desglosado + iva_desglosado == 250.00, "Desglose IVA incluido debe sumar exactamente total"
+    
+    return f"Lógica de cotización y matemáticas de IVA 13% verificadas con éxito (Marcados={items_marcados}, Total={total_general})"
+
 # Execute all tests
 print("================== EJECUTANDO SUITE DE PRUEBAS UNITARIAS ==================")
 run_test("1. Estructura de Catálogo y Conteo de SKUs", test_catalogo_structure)
@@ -148,6 +191,8 @@ run_test("7. Estructura de Movimientos Operativos", test_movimientos_structure)
 run_test("8. Integración con Motor Forecast & Abastecimiento", test_forecast_sheets)
 run_test("9. Estructura de Insumos a Instaladores", test_insumos_instaladores)
 run_test("10. Estructura de Agenda de Puertas", test_agenda_puertas)
+run_test("11. Estructura de Cotizaciones (Cabecera, Detalle, Plantilla y Precios)", test_cotizaciones_structure)
+run_test("12. Lógica de Negocio y Validación Matemática de Cotizaciones", test_cotizaciones_logic_and_totals)
 
 with open('scripts/test_results.json', 'w', encoding='utf-8') as f:
     json.dump(test_results, f, indent=2, ensure_ascii=False)

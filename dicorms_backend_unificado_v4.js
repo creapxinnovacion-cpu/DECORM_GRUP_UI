@@ -1534,33 +1534,75 @@ function handleCotizacionesList_(params) {
       cleanCotId = String(cab.uid || ('COT-26-' + ('000' + cab._rowNumber).slice(-3)));
     }
 
+    const incIvaCab = cab.precios_incluyen_iva === true || String(cab.precios_incluyen_iva).toUpperCase() === 'SI';
+
     const lines = detalles.filter(function(d) {
-      return String(d.cotizacion_id).trim() === cleanCotId || String(d.cotizacion_id).trim() === String(cab.cotizacion_id).trim();
+      const dCotId = String(d.cotizacion_id || '').trim();
+      return dCotId === cleanCotId || dCotId === String(cab.cotizacion_id || '').trim();
     }).map(function(d) {
+      const isInc = d.incluir === true || String(d.incluir).toUpperCase() === 'SI' || String(d.incluir).toUpperCase() === 'TRUE';
+      const cant = Number(d.cantidad || 0);
+      const pu = Number(d.precio_unitario || 0);
+      let subNet = Number(d.subtotal_neto || 0);
+      let iva = Number(d.iva_13 || 0);
+      let tot = Number(d.total_linea || 0);
+
+      // Si las fórmulas de Google Sheets estaban vacías o 0, calcular dinámicamente
+      if (cant > 0 && pu > 0 && tot === 0) {
+        if (incIvaCab) {
+          tot = Number((cant * pu).toFixed(2));
+          subNet = Number((tot / 1.13).toFixed(2));
+          iva = Number((tot - subNet).toFixed(2));
+        } else {
+          subNet = Number((cant * pu).toFixed(2));
+          iva = Number((subNet * 0.13).toFixed(2));
+          tot = Number((subNet + iva).toFixed(2));
+        }
+      }
+
       return {
-        incluir: d.incluir === true || String(d.incluir).toUpperCase() === 'SI' || String(d.incluir).toUpperCase() === 'TRUE',
+        incluir: isInc,
         tipo_item: d.tipo_item || 'INSUMO',
         sku: d.sku,
         codigo_proveedor: d.codigo_proveedor || '',
         descripcion: d.descripcion || '',
         unidad: d.unidad || 'unidad',
-        cantidad: Number(d.cantidad || 0),
-        precio_unitario: Number(d.precio_unitario || 0),
-        incluye_iva: d.incluye_iva === true || String(d.incluye_iva).toUpperCase() === 'SI',
-        subtotal_neto: Number(d.subtotal_neto || 0),
-        iva_13: Number(d.iva_13 || 0),
-        total_linea: Number(d.total_linea || 0),
+        cantidad: cant,
+        precio_unitario: pu,
+        incluye_iva: d.incluye_iva === true || String(d.incluye_iva).toUpperCase() === 'SI' || incIvaCab,
+        subtotal_neto: subNet,
+        iva_13: iva,
+        total_linea: tot,
         taller_linea: d.taller_linea || cab.taller_destino,
       };
     });
 
+    let calcItemsMarcados = 0;
+    let calcSubtotalNeto = 0;
+    let calcIva = 0;
+    let calcTotal = 0;
+
+    lines.forEach(function(l) {
+      if (l.incluir) {
+        calcItemsMarcados += 1;
+        calcSubtotalNeto += (l.subtotal_neto || 0);
+        calcIva += (l.iva_13 || 0);
+        calcTotal += (l.total_linea || 0);
+      }
+    });
+
+    const finalItemsMarcados = lines.length > 0 ? calcItemsMarcados : Number(cab.items_marcados || 0);
+    const finalSubtotal = lines.length > 0 ? Number(calcSubtotalNeto.toFixed(2)) : Number(cab.subtotal_neto || 0);
+    const finalIva = lines.length > 0 ? Number(calcIva.toFixed(2)) : Number(cab.iva_13 || 0);
+    const finalTotal = lines.length > 0 ? Number(calcTotal.toFixed(2)) : Number(cab.total || 0);
+
     return Object.assign({}, cab, {
       cotizacion_id: cleanCotId,
-      precios_incluyen_iva: cab.precios_incluyen_iva === true || String(cab.precios_incluyen_iva).toUpperCase() === 'SI',
-      items_marcados: Number(cab.items_marcados || lines.filter(function(l) { return l.incluir; }).length),
-      subtotal_neto: Number(cab.subtotal_neto || 0),
-      iva_13: Number(cab.iva_13 || 0),
-      total: Number(cab.total || 0),
+      precios_incluyen_iva: incIvaCab,
+      items_marcados: finalItemsMarcados,
+      subtotal_neto: finalSubtotal,
+      iva_13: finalIva,
+      total: finalTotal,
       lineas: lines,
     });
   });
@@ -1677,17 +1719,76 @@ function handleCotizacionesCreate_(params, user, requestId) {
 
 function handleCotizacionesUpdate_(params, user, requestId) {
   if (!params.cot_id) throw appError_('VALIDATION', 'Debe indicar cot_id a actualizar.');
-  const cot_id = params.cot_id;
+  const cot_id = String(params.cot_id).trim();
   const changes = params.changes || {};
 
   const cabeceras = listEntity_('cotizaciones_cabecera', { pageSize: 500 }).rows;
-  const cab = cabeceras.find(function(c) { return c.cotizacion_id === cot_id; });
+  const cab = cabeceras.find(function(c) { return String(c.cotizacion_id).trim() === cot_id; });
   if (!cab) throw appError_('NOT_FOUND', 'Cotización no encontrada: ' + cot_id);
 
   if (changes.taller_destino) changes.taller_destino = validarTallerCanonico_(changes.taller_destino);
   changes.updated_at = Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd HH:mm:ss');
 
+  // Si vienen líneas en changes, sincronizarlas en Cotizaciones_Detalle
+  if (Array.isArray(changes.lineas)) {
+    const lineas = changes.lineas;
+    const defDet = SCHEMA.cotizaciones_detalle;
+    const shDet = getSheet_(defDet.sheet);
+    const lastRow = shDet.getLastRow();
+
+    if (lastRow >= defDet.firstRow) {
+      const colsDet = headerMap_(shDet, defDet.headerRow);
+      const colCotIdIdx = getColIdx_(colsDet, 'Cotización ID');
+      const cotValues = shDet.getRange(defDet.firstRow, colCotIdIdx, lastRow - defDet.firstRow + 1, 1).getValues();
+
+      // Borrar filas existentes de esta cotización de abajo hacia arriba para mantener índices
+      for (let r = cotValues.length - 1; r >= 0; r--) {
+        const val = String(cotValues[r][0] || '').trim();
+        if (val === cot_id) {
+          shDet.deleteRow(defDet.firstRow + r);
+        }
+      }
+      SpreadsheetApp.flush();
+    }
+
+    // Insertar las nuevas líneas
+    const proveedorActual = changes.proveedor || cab.proveedor;
+    const tallerActual = changes.taller_destino || cab.taller_destino;
+    const incIvaActual = changes.precios_incluyen_iva !== undefined ? Boolean(changes.precios_incluyen_iva) : Boolean(cab.precios_incluyen_iva);
+
+    lineas.forEach(function(lin, idx) {
+      const detPayload = {
+        cotizacion_id: cot_id,
+        incluir: lin.incluir ? 'SI' : 'NO',
+        tipo_item: lin.tipo_item || 'INSUMO',
+        sku: lin.sku,
+        codigo_proveedor: lin.codigo_proveedor || '',
+        descripcion: lin.descripcion || '',
+        unidad: lin.unidad || 'unidad',
+        cantidad: Number(lin.cantidad || 0),
+        precio_unitario: Number(lin.precio_unitario || 0),
+        taller_linea: lin.taller_linea || tallerActual,
+      };
+      createRow_('cotizaciones_detalle', detPayload, user, requestId ? requestId + '_u' + idx : null);
+
+      if (lin.incluir && Number(lin.precio_unitario || 0) > 0) {
+        handlePreciosUpsert_({
+          sku: lin.sku,
+          proveedor: proveedorActual,
+          codigo_proveedor: lin.codigo_proveedor || '',
+          descripcion: lin.descripcion || '',
+          ultimo_precio: Number(lin.precio_unitario || 0),
+          incluye_iva: incIvaActual ? 'SI' : 'NO',
+          ref: cot_id,
+        }, user);
+      }
+    });
+
+    delete changes.lineas;
+  }
+
   updateRowByIndex_('cotizaciones_cabecera', cab._rowNumber, changes, user, requestId);
+  SpreadsheetApp.flush();
   return { ok: true, cotizacion_id: cot_id };
 }
 

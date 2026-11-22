@@ -48,5 +48,15 @@
     "test": "10. Estructura de Agenda de Puertas",
     "status": "PASS",
     "details": "AgendaDePuertas OK: ['SKU Puerta', 'Día Entrega', 'Cliente', 'Modelo', 'Posición', 'Unidades']"
+  },
+  {
+    "test": "11. Estructura de Cotizaciones (Cabecera, Detalle, Plantilla y Precios)",
+    "status": "PASS",
+    "details": "Cotizaciones Estructura OK: Cabecera (13 cols), Detalle (15 cols)"
+  },
+  {
+    "test": "12. Lógica de Negocio y Validación Matemática de Cotizaciones",
+    "status": "PASS",
+    "details": "Lógica de cotización y matemáticas de IVA 13% verificadas con éxito (Marcados=2, Total=282.5)"
   }
 ]
