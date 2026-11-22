@@ -167,4 +167,33 @@ class BodegaProvider extends ChangeNotifier {
     await apiService.upsertSeguimiento(item);
     await fetchAll();
   }
+
+  // Insumos Instaladores (Multi-Insumo Batch R-32)
+  Future<Map<String, dynamic>> registrarInsumosInstaladoresBatch(
+    Map<String, dynamic> cabecera,
+    List<Map<String, dynamic>> lineas,
+  ) async {
+    final res = await apiService.createInsumosInstaladoresBatch(cabecera, lineas);
+    await fetchAll();
+    return res;
+  }
+
+  // Cotizaciones v4.1
+  Future<List<Map<String, dynamic>>> getCotizaciones({String? estado, String? proveedor}) async {
+    return await apiService.getCotizaciones(estado: estado, proveedor: proveedor);
+  }
+
+  Future<Map<String, dynamic>> crearCotizacion(
+    Map<String, dynamic> cabecera,
+    List<Map<String, dynamic>> lineas,
+  ) async {
+    final res = await apiService.createCotizacion(cabecera, lineas);
+    await fetchAll();
+    return res;
+  }
+
+  Future<void> setEstadoCotizacion(String cotId, String estado) async {
+    await apiService.setEstadoCotizacion(cotId, estado);
+    await fetchAll();
+  }
 }

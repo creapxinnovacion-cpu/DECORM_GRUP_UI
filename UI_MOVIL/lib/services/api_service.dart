@@ -196,4 +196,48 @@ class ApiService {
   Future<Map<String, dynamic>> getDashboard() async {
     return await _call('dashboard.get', {'tolerancia': 0});
   }
+
+  // Insumos Instaladores (Multi-insumo Batch & Descuento Atómico R-32)
+  Future<List<Map<String, dynamic>>> getInsumosInstaladores({int pageSize = 100}) async {
+    final res = await _call('instaladores.list', {'pageSize': pageSize});
+    final rows = res['rows'] as List<dynamic>? ?? [];
+    return rows.map((e) => e as Map<String, dynamic>).toList();
+  }
+
+  Future<Map<String, dynamic>> createInsumosInstaladoresBatch(
+    Map<String, dynamic> cabecera,
+    List<Map<String, dynamic>> lineas,
+  ) async {
+    return await _call('instaladores.createBatch', {
+      'cabecera': cabecera,
+      'lineas': lineas,
+    });
+  }
+
+  // Cotizaciones v4.1 (CRUD & Cambio de Estado)
+  Future<List<Map<String, dynamic>>> getCotizaciones({String? estado, String? proveedor}) async {
+    final res = await _call('cotizaciones.list', {
+      if (estado != null) 'estado': estado,
+      if (proveedor != null) 'proveedor': proveedor,
+    });
+    final rows = res['rows'] as List<dynamic>? ?? [];
+    return rows.map((e) => e as Map<String, dynamic>).toList();
+  }
+
+  Future<Map<String, dynamic>> createCotizacion(
+    Map<String, dynamic> cabecera,
+    List<Map<String, dynamic>> lineas,
+  ) async {
+    return await _call('cotizaciones.create', {
+      'cabecera': cabecera,
+      'lineas': lineas,
+    });
+  }
+
+  Future<void> setEstadoCotizacion(String cotId, String estado) async {
+    await _call('cotizaciones.setEstado', {
+      'cot_id': cotId,
+      'estado': estado,
+    });
+  }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../providers/bodega_provider.dart';
 import '../models/articulo_model.dart';
 import '../config/theme.dart';
@@ -255,6 +256,7 @@ class _ConsultaCatalogoScreenState extends State<ConsultaCatalogoScreen> {
     final descController = TextEditingController(text: item.descripcion);
     final provController = TextEditingController();
     final minController = TextEditingController(text: '${item.stockMinimo}');
+    final conteoController = TextEditingController(text: '${item.stockActual}');
     String unidad = item.unidad;
     String categoria = item.categoria;
     bool isSaving = false;
@@ -328,6 +330,38 @@ class _ConsultaCatalogoScreenState extends State<ConsultaCatalogoScreen> {
                     controller: provController,
                     decoration: const InputDecoration(labelText: 'Proveedor Preferido'),
                   ),
+                  const SizedBox(height: 12),
+                  // Bloque de Conteo Físico a Mano (Auditoría en Bodega)
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: DecormTheme.primaryAmber.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: DecormTheme.primaryAmber.withOpacity(0.2)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Conteo Físico a Mano (Auditoría en Bodega)',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: DecormTheme.primaryAmber,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        TextField(
+                          controller: conteoController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Stock Físico Contado a Mano',
+                            prefixIcon: Icon(Icons.inventory_2_outlined, color: DecormTheme.primaryAmber, size: 20),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -342,13 +376,19 @@ class _ConsultaCatalogoScreenState extends State<ConsultaCatalogoScreen> {
                     : () async {
                         setDialogState(() => isSaving = true);
                         try {
-                          await bodega.updateArticulo(item.sku, {
+                          final changes = <String, dynamic>{
                             'descripcion': descController.text.trim(),
                             'categoria': categoria,
                             'unidad': unidad,
                             'proveedor_pref': provController.text.trim(),
                             'stock_minimo': num.tryParse(minController.text.trim()) ?? item.stockMinimo,
-                          });
+                          };
+                          final conteoNum = num.tryParse(conteoController.text.trim());
+                          if (conteoNum != null) {
+                            changes['ultimo_conteo'] = conteoNum;
+                            changes['fecha_conteo'] = DateFormat('yyyy-MM-dd').format(DateTime.now());
+                          }
+                          await bodega.updateArticulo(item.sku, changes);
                           if (ctx.mounted) Navigator.pop(ctx);
                         } finally {
                           setDialogState(() => isSaving = false);

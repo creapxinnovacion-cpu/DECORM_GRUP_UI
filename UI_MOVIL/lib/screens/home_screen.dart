@@ -11,6 +11,8 @@ import 'compras_screen.dart';
 import 'prestamos_screen.dart';
 import 'conteo_fisico_screen.dart';
 import 'consulta_catalogo_screen.dart';
+import 'instaladores_screen.dart';
+import 'cotizaciones_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -295,12 +297,40 @@ class _HomeScreenState extends State<HomeScreen> {
                     _buildActionTile(
                       icon: Icons.inventory_2_outlined,
                       title: 'Catálogo Maestro & Stock',
-                      subtitle: 'Crear SKU, editar artículo, ver existencias',
+                      subtitle: 'Crear SKU, conteo físico a mano, existencias',
                       badgeText: 'Catálogo CRUD',
                       badgeColor: DecormTheme.primaryAmber,
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const ConsultaCatalogoScreen()),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Action 8: Insumos a Instaladores (Multi-Insumo)
+                    _buildActionTile(
+                      icon: Icons.handyman_outlined,
+                      title: 'Despacho Insumos Instaladores',
+                      subtitle: 'Multi-insumo rápido: lijas, thinner, discos, cerraduras',
+                      badgeText: 'v4.1 Multi',
+                      badgeColor: DecormTheme.statusWarning,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const InstaladoresScreen()),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Action 9: Cotizaciones y Precios Proveedor
+                    _buildActionTile(
+                      icon: Icons.request_quote_outlined,
+                      title: 'Cotizaciones Proveedores',
+                      subtitle: 'Crear cotizaciones, comparar precios y aprobar',
+                      badgeText: 'v4.1 Cotiz.',
+                      badgeColor: DecormTheme.statusInfo,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const CotizacionesScreen()),
                       ),
                     ),
                   ],
