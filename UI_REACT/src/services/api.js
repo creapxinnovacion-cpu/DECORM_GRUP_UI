@@ -3,7 +3,7 @@
  * GRUPO DECORM
  */
 
-const API_BASE_URL = 'https://script.google.com/macros/s/AKfycbzaDMBt4CKZ_cqgIsiiNptopHSNniPxJEOQy8Q2BCcvJKPFbFjMc5Ott1cY3O2milKp1g/exec';
+const API_BASE_URL = 'https://script.google.com/macros/s/AKfycbz3zXre-hAND34mQdYScaFIcYv6mQ59GWF0OGPUHOQPywPOQXvAipK-pyOghKvUxn2G/exec';
 
 // Generate UUID for idempotent operations
 export function generateRequestId() {
