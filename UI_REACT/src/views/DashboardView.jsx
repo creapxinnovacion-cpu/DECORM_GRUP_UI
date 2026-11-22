@@ -66,7 +66,13 @@ export function DashboardView({ onNavigateTab }) {
   }, [claveMes, taller, tolerancia]);
 
   const kpis = data?.kpis || {};
-  const top10 = data?.top10_insumos || [];
+  const top10 = (data?.top10_insumos || []).filter(
+    (item) =>
+      item.sku &&
+      !['catalogo', 'compras', 'equivalencias', 'cotizaciones_cabecera', 'resumen', 'inicio'].includes(
+        String(item.sku).toLowerCase()
+      )
+  );
   const alertas = data?.alertas || [];
 
   // Consumo semanal normalized

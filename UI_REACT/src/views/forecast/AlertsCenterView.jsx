@@ -44,13 +44,14 @@ export function AlertsCenterView({ onSelectSku, onNavigatePlan, onNavigateCotiza
     fetchAlerts();
   }, [incluirGris]);
 
-  const resumen = data.resumen || {
-    rojo: 0,
-    naranja: 0,
-    amarillo: 0,
-    gris: 0,
-    verde: 0,
-    total_alertas: 0,
+  const rawRes = data?.resumen || {};
+  const resumen = {
+    rojo: rawRes.rojo ?? rawRes.ROJO ?? 0,
+    naranja: rawRes.naranja ?? rawRes.NARANJA ?? 0,
+    amarillo: rawRes.amarillo ?? rawRes.AMARILLO ?? 0,
+    gris: rawRes.gris ?? rawRes.GRIS ?? 0,
+    verde: rawRes.verde ?? rawRes.VERDE ?? 0,
+    total_alertas: rawRes.total_alertas ?? rawRes.TOTAL_ALERTAS ?? 0,
   };
 
   // Filter alerts by search term & severity
@@ -60,9 +61,9 @@ export function AlertsCenterView({ onSelectSku, onNavigatePlan, onNavigateCotiza
       (item.sku || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (item.descripcion || '').toLowerCase().includes(searchTerm.toLowerCase());
 
+    const itemNivel = String(item.alerta || item.nivel || '').toUpperCase();
     const matchesSeveridad =
-      filtroSeveridad === 'TODOS' ||
-      String(item.alerta || '').toUpperCase() === filtroSeveridad;
+      filtroSeveridad === 'TODOS' || itemNivel === filtroSeveridad;
 
     return matchesSearch && matchesSeveridad;
   });
@@ -258,15 +259,17 @@ export function AlertsCenterView({ onSelectSku, onNavigatePlan, onNavigateCotiza
             const isUrgente = item.urgente || item.alerta === 'ROJO';
             const hasConciliacionAlert = item.conciliacion?.alerta;
 
+            const itemNivel = String(item.alerta || item.nivel || 'GRIS').toUpperCase();
+
             return (
               <div
                 key={item.sku}
                 className={`relative flex flex-col justify-between p-5 rounded-2xl border transition-all shadow-lg ${
-                  item.alerta === 'ROJO'
+                  itemNivel === 'ROJO'
                     ? 'bg-rose-950/20 border-rose-500/30 hover:border-rose-500/60'
-                    : item.alerta === 'NARANJA'
+                    : itemNivel === 'NARANJA'
                     ? 'bg-amber-950/20 border-amber-500/30 hover:border-amber-500/60'
-                    : item.alerta === 'AMARILLO'
+                    : itemNivel === 'AMARILLO'
                     ? 'bg-yellow-950/15 border-yellow-500/30 hover:border-yellow-500/60'
                     : 'bg-slate-900/50 border-slate-800 hover:border-slate-700'
                 }`}
@@ -274,7 +277,7 @@ export function AlertsCenterView({ onSelectSku, onNavigatePlan, onNavigateCotiza
                 {/* Top Badges */}
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-2">
-                    <AlertBadge nivel={item.alerta} size="xs" />
+                    <AlertBadge nivel={itemNivel} size="xs" />
                     <div className="flex items-center gap-1.5">
                       {isUrgente && (
                         <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded bg-rose-500 text-white shadow-sm shadow-rose-500/30 animate-pulse">

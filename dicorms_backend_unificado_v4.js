@@ -160,26 +160,28 @@ const SCHEMA = {
     },
     computed: {
       grupo_gasto: 'Grupo de gasto',
-      entradas_compras: 'Entradas (compras)',
+      entradas_compras: 'Entradas compras',
       otras_entradas: 'Otras entradas',
       salidas: 'Salidas',
       stock_teorico: 'Stock teórico',
-      mov_neto_post_conteo: 'Mov. neto post-conteo',
+      mov_neto_post_conteo: 'Mov. post-conteo',
       stock_actual: 'STOCK ACTUAL',
       dif_conteo_vs_teorico: 'Dif. conteo vs teórico',
-      precio_ref_neto: 'Precio ref. neto (última compra)',
-      pmp: 'PMP',
-      costo_valoracion: 'Costo unit. valoración',
+      precio_ref_neto: 'Precio ref. neto $',
+      pmp: 'PMP $',
+      costo_valoracion: 'Costo unit. valoración $',
       valor_inventario: 'Valor inventario $',
       estado: 'ESTADO',
-      dem_talleres_pend: 'Dem. talleres pendiente',
-      dem_puertas_pend: 'Dem. puertas pendiente',
+      dem_talleres_pend: 'Dem. talleres pend.',
+      dem_puertas_pend: 'Dem. puertas pend.',
       compra_sugerida: 'COMPRA SUGERIDA',
       costo_est_compra: 'Costo est. compra $',
     },
     types: {
       stock_inicial: 'number',
       stock_minimo: 'number',
+      ultimo_conteo: 'number',
+      fecha_conteo: 'date',
     },
   },
 
@@ -282,50 +284,52 @@ const SCHEMA = {
   },
 
   seguimiento: {
-    sheet: 'SeguimientoManualStok',
-    headerRow: 1,
-    firstRow: 2,
-    pk: 'id_articulo',
-    slotCols: ['ID del artículo'],
+    sheet: 'Catalogo',
+    headerRow: 3,
+    firstRow: 4,
+    pk: 'sku',
+    slotCols: ['SKU'],
     inputs: {
-      id_articulo: 'ID del artículo',
-      nombre_articulo: 'Nombre del artículo',
-      tipo: 'Tipo',
-      stock: 'Stock',
-      stock_minimo: 'Stock Mínimo',
-      estado: 'Estado',
-      notas: 'Notas',
+      id_articulo: 'SKU',
+      sku: 'SKU',
+      nombre_articulo: 'Descripción',
+      descripcion: 'Descripción',
+      stock: 'Último conteo físico',
+      ultimo_conteo: 'Último conteo físico',
+      stock_minimo: 'Stock mínimo',
+      fecha_conteo: 'Fecha conteo',
     },
     computed: {
-      sku_catalogo: 'SKU Catálogo [Auto]',
-      stock_sistema: 'Stock Sistema [Auto]',
-      diferencia: 'Diferencia [Auto]',
-      estado_conciliacion: 'Estado Conciliación [Auto]',
+      stock_sistema: 'STOCK ACTUAL',
+      stock_actual: 'STOCK ACTUAL',
+      diferencia: 'Dif. conteo vs teórico',
+      estado: 'ESTADO',
     },
     types: {
       stock: 'number',
       stock_minimo: 'number',
+      ultimo_conteo: 'number',
     },
   },
 
   equivalencias: {
     sheet: 'Equivalencias',
-    headerRow: 4,
-    firstRow: 5,
+    headerRow: 3,
+    firstRow: 4,
     pk: 'sku_catalogo',
     slotCols: ['ID Conteo (INS)', 'SKU Catálogo'],
     inputs: {
       id_conteo_ins: 'ID Conteo (INS)',
+      nombre_conteo: 'Nombre en Conteo Manual',
       sku_catalogo: 'SKU Catálogo',
       factor_desglose: 'Factor Desglose',
       estado_equivalencia: 'Estado Equivalencia',
       detalle: 'Detalle / Confirmación Requerida',
     },
     computed: {
-      nombre_conteo: 'Nombre en Conteo Manual [Auto]',
-      descripcion_catalogo: 'Descripción en Catálogo [Auto]',
-      stock_fisico_asignado: 'Stock Físico Asignado [Auto]',
-      stock_sistema_inv: 'Stock Sistema Inv.* [Auto]',
+      descripcion_catalogo: 'Descripción Catálogo',
+      stock_fisico_asignado: 'Stock Físico Asignado',
+      stock_sistema: 'Stock Sistema',
     },
     types: {
       factor_desglose: 'number',
@@ -334,22 +338,21 @@ const SCHEMA = {
 
   conciliacion: {
     sheet: 'Conciliacion',
-    headerRow: 4,
-    firstRow: 5,
+    headerRow: 3,
+    firstRow: 4,
     pk: 'sku',
     slotCols: ['SKU'],
     inputs: {
       sku: 'SKU',
-      causa_probable: 'Causa probable',
+      causa_probable: 'Causa Probable',
     },
     computed: {
-      id_conteo_ins: 'ID Conteo (INS)',
       descripcion: 'Descripción',
-      stock_fisico: 'Stock físico (SeguimientoManualStok)',
-      stock_sistema: 'Stock sistema (Inv.*)',
+      stock_fisico: 'Stock Físico',
+      stock_sistema: 'Stock Sistema',
       diferencia: 'Diferencia',
-      pct_diferencia: '% diferencia',
-      estado: 'Estado (CUADRA / FALTANTE / SOBRANTE / SIN CONTEO)',
+      pct_diferencia: '% Diferencia',
+      estado: 'Estado',
     },
     types: {},
   },
@@ -1164,17 +1167,37 @@ function handleDevolverPrestamo_(params, user, requestId) {
 }
 
 function handleSeguimientoUpsert_(params, user, requestId) {
-  if (!params.id_articulo) {
-    throw appError_('VALIDATION', 'Debe especificar id_articulo (ej. INS-001).');
+  if (!params.id_articulo && !params.sku) {
+    throw appError_('VALIDATION', 'Debe especificar SKU o id_articulo.');
   }
-  const list = listEntity_('seguimiento', { pageSize: 500 }).rows;
-  const existing = list.find(function(r) {
-    return String(r.id_articulo).trim().toUpperCase() === String(params.id_articulo).trim().toUpperCase();
-  });
-  if (existing) {
-    return updateByPk_('seguimiento', existing.id_articulo, params, user, requestId);
+  const identifier = String(params.sku || params.id_articulo).trim();
+  
+  // Buscar si coincide directamente con SKU en Catalogo
+  let catItem = null;
+  try { catItem = getByPk_('catalogo', identifier); } catch (e) {}
+
+  if (!catItem) {
+    // Buscar si es un ID de conteo manual (INS-xxx) en Equivalencias
+    const equivs = listEntity_('equivalencias', { pageSize: 500 }).rows;
+    const eqMatch = equivs.find(function(eq) {
+      return String(eq.id_conteo_ins || '').trim().toUpperCase() === identifier.toUpperCase();
+    });
+    if (eqMatch && eqMatch.sku_catalogo) {
+      try { catItem = getByPk_('catalogo', eqMatch.sku_catalogo); } catch (e) {}
+    }
   }
-  return createRow_('seguimiento', params, user, requestId);
+
+  const stockVal = Number(params.stock !== undefined ? params.stock : params.ultimo_conteo);
+  const fechaVal = params.fecha_conteo || params.fecha || Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd');
+
+  if (catItem) {
+    return updateByPk_('catalogo', catItem.sku, {
+      ultimo_conteo: stockVal,
+      fecha_conteo: fechaVal,
+    }, user, requestId);
+  }
+
+  throw appError_('NOT_FOUND', 'No se encontró artículo o equivalencia para: ' + identifier);
 }
 
 function handleConfirmarEquivalencia_(params, user, requestId) {
@@ -1192,6 +1215,7 @@ function handleConfirmarEquivalencia_(params, user, requestId) {
 function handleConciliacionGet_(params) {
   const all = listEntity_('conciliacion', { pageSize: 1000 }).rows;
   const summary = {
+    total: all.length,
     cuadra: 0,
     faltante: 0,
     sobrante: 0,
@@ -1209,7 +1233,7 @@ function handleConciliacionGet_(params) {
   });
 
   let rows = all;
-  if (params && params.estado) {
+  if (params && params.estado && String(params.estado).toUpperCase() !== 'TODOS') {
     rows = rows.filter(function(r) {
       return String(r.estado).toUpperCase() === String(params.estado).toUpperCase();
     });
@@ -1222,7 +1246,9 @@ function handleConciliacionGet_(params) {
 
   return {
     summary: summary,
+    resumen: summary,
     rows: rows,
+    items: rows,
   };
 }
 
@@ -1250,16 +1276,17 @@ function handleDashboardGet_(params, user) {
 
     const vals = sh.getRange('A1:N51').getValues();
 
+    // Fila 7 en Excel (vals[6] en 0-indexed JS) contiene los VALORES numéricos reales de los KPIs
     const kpis = {
       clave_mes: vals[2][1],
       filtro_taller: vals[2][3],
       tolerancia_conciliacion: vals[2][7],
-      articulos_a_comprar: Number(vals[5][0] || 0),
-      articulos_agotados: Number(vals[5][2] || 0),
-      valor_inventario: Number(vals[5][4] || 0),
-      gasto_del_mes: Number(vals[5][6] || 0),
+      articulos_a_comprar: Number(vals[6][0] || 0),
+      articulos_agotados: Number(vals[6][2] || 0),
+      valor_inventario: Number(vals[6][4] || 0),
+      gasto_del_mes: Number(vals[6][6] || 0),
       conciliacion_resumen: String(vals[5][8] || ''),
-      unidades_consumidas_mes: Number(vals[5][11] || 0),
+      unidades_consumidas_mes: Number(vals[6][8] || 0),
     };
 
     const consumoSemanal = [];
@@ -1274,7 +1301,8 @@ function handleDashboardGet_(params, user) {
     }
 
     const consumoPorTaller = [];
-    for (let r = 20; r <= 23; r++) {
+    for (let r = 19; r <= 23; r++) {
+      if (!vals[r][0] || String(vals[r][0]).indexOf('TOTAL') !== -1) continue;
       consumoPorTaller.push({
         taller: vals[r][0],
         eventos_salida: Number(vals[r][1] || 0),
@@ -1284,36 +1312,61 @@ function handleDashboardGet_(params, user) {
       });
     }
 
-    const top10Insumos = [];
-    for (let r = 29; r <= 38; r++) {
-      top10Insumos.push({
-        rank: Number(vals[r][0] || 0),
-        sku: vals[r][1],
-        descripcion: vals[r][2],
-        sem1: Number(vals[r][3] || 0),
-        sem2: Number(vals[r][4] || 0),
-        sem3: Number(vals[r][5] || 0),
-        sem4: Number(vals[r][6] || 0),
-        total_consumido: Number(vals[r][7] || 0),
-        min_semanal: Number(vals[r][8] || 0),
-        prom_semanal: Number(vals[r][9] || 0),
-        max_semanal: Number(vals[r][10] || 0),
-        stock_actual: Number(vals[r][11] || 0),
-        cobertura_semanas: Number(vals[r][12] || 0),
-        alerta_cobertura: vals[r][13],
-      });
-    }
+    // Top 10 Insumos calculado dinámicamente de movimientos del mes (elimina bug de nombres de hojas como SKUs)
+    const allMovs = listEntity_('movimientos', { pageSize: 5000 }).rows;
+    const allCat = listEntity_('catalogo', { pageSize: 500 }).rows;
+    const catBySku = {};
+    allCat.forEach(function(c) { if (c.sku) catBySku[c.sku] = c; });
 
+    const skuSalidas = {};
+    const targetClaveMes = params && params.clave_mes ? Number(String(params.clave_mes).replace(/-/g, '')) : null;
+    allMovs.forEach(function(m) {
+      if (String(m.tipo || '').toLowerCase().indexOf('salida') === -1) return;
+      if (targetClaveMes && m.clave_mes && Number(m.clave_mes) !== targetClaveMes) return;
+      const s = String(m.sku || '').trim();
+      if (!s) return;
+      skuSalidas[s] = (skuSalidas[s] || 0) + Math.abs(Number(m.cantidad || 0));
+    });
+
+    const sortedSkus = Object.keys(skuSalidas).sort(function(a, b) {
+      return skuSalidas[b] - skuSalidas[a];
+    }).slice(0, 10);
+
+    const top10Insumos = sortedSkus.map(function(sku, idx) {
+      const cat = catBySku[sku] || {};
+      const totalCons = skuSalidas[sku] || 0;
+      const promSem = Number((totalCons / 4).toFixed(1));
+      const stockAct = Number(cat.stock_actual ?? 0);
+      const cobSem = promSem > 0 ? Number((stockAct / promSem).toFixed(1)) : (stockAct > 0 ? 99 : 0);
+      let alertaCob = 'NORMAL';
+      if (stockAct <= 0) alertaCob = 'AGOTADO';
+      else if (cobSem < 2) alertaCob = 'CRITICO';
+
+      return {
+        rank: idx + 1,
+        sku: sku,
+        descripcion: cat.descripcion || 'Insumo Operativo',
+        total_consumido: totalCons,
+        prom_semanal: promSem,
+        stock_actual: stockAct,
+        cobertura_semanas: cobSem,
+        alerta_cobertura: alertaCob,
+      };
+    });
+
+    // Filas 29 a 36 en Excel (vals[28] a vals[35] en JS) contienen las 8 alertas de calidad del sistema
     const alertas = [];
-    for (let r = 44; r <= 50; r++) {
-      alertas.push({
-        control: vals[r][0],
-        hoja_origen: vals[r][1],
-        cantidad_casos: Number(vals[r][2] || 0),
-        meta: Number(vals[r][3] || 0),
-        severidad: vals[r][4],
-        accion_recomendada: vals[r][5],
-      });
+    for (let r = 28; r <= 35; r++) {
+      if (vals[r][0]) {
+        alertas.push({
+          control: vals[r][0],
+          hoja_origen: vals[r][1],
+          cantidad_casos: Number(vals[r][2] || 0),
+          meta: Number(vals[r][3] || 0),
+          severidad: vals[r][4],
+          accion_recomendada: vals[r][5],
+        });
+      }
     }
 
     return {
@@ -2855,8 +2908,17 @@ function fcComputeAll_(ctx, incluirProyeccion) {
 }
 
 function fcSummary_(rows) {
-  const r = { ROJO: 0, NARANJA: 0, AMARILLO: 0, VERDE: 0, GRIS: 0 };
-  rows.forEach(function(x) { r[x.alerta.nivel]++; });
+  const r = {
+    ROJO: 0, NARANJA: 0, AMARILLO: 0, VERDE: 0, GRIS: 0,
+    rojo: 0, naranja: 0, amarillo: 0, verde: 0, gris: 0,
+    total_alertas: (rows || []).length,
+  };
+  (rows || []).forEach(function(x) {
+    const niv = String(x.alerta && x.alerta.nivel || 'GRIS').toUpperCase();
+    if (r[niv] !== undefined) r[niv]++;
+    const low = niv.toLowerCase();
+    if (r[low] !== undefined) r[low]++;
+  });
   return r;
 }
 
@@ -2914,6 +2976,7 @@ function getStockoutAlerts_(p) {
     alertas: rows.map(function(r) {
       return {
         sku: r.sku, descripcion: r.descripcion, unidad: r.unidad, nivel: r.alerta.nivel,
+        alerta: r.alerta.nivel,
         causa: r.alerta.causa, accion: r.alerta.accion, stock_fisico: r.stock_fisico,
         tasa_diaria: r.tasa_diaria, fecha_agotamiento: r.fecha_agotamiento,
         dias_cobertura: r.dias_cobertura, cantidad_sugerida: r.cantidad_sugerida,

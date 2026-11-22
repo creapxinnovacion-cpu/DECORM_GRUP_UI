@@ -23,22 +23,19 @@ export function ConciliacionView() {
   const [loading, setLoading] = useState(true);
   const [conciliacionData, setConciliacionData] = useState(null);
   const [equivalencias, setEquivalencias] = useState([]);
-  const [seguimiento, setSeguimiento] = useState([]);
+  const [catalogoList, setCatalogoList] = useState([]);
   const [calidadData, setCalidadData] = useState(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('TODOS');
 
-  // Modal Upsert Seguimiento
+  // Modal Conteo Físico Inteligente (Búsqueda por SKU o Nombre)
   const [showUpsertModal, setShowUpsertModal] = useState(false);
-  const [upsertItem, setUpsertItem] = useState({
-    id_articulo: 'INS-001',
-    nombre_articulo: '',
-    tipo: 'Consumible',
-    stock: 0,
-    stock_minimo: 10,
-    estado: 'Normal',
-    notas: '',
-  });
+  const [searchModalSku, setSearchModalSku] = useState('');
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [conteoFisicoVal, setConteoFisicoVal] = useState('');
+  const [conteoFecha, setConteoFecha] = useState(new Date().toISOString().split('T')[0]);
+  const [conteoAjusteKardex, setConteoAjusteKardex] = useState(true);
+  const [conteoNotas, setConteoNotas] = useState('');
   const [savingUpsert, setSavingUpsert] = useState(false);
 
   const fetchData = async () => {
@@ -46,10 +43,10 @@ export function ConciliacionView() {
     try {
       const concRes = await api.getConciliacion();
       setConciliacionData(concRes);
-      const eqRes = await api.getEquivalencias({ pageSize: 50 });
+      const eqRes = await api.getEquivalencias({ pageSize: 100 });
       setEquivalencias(eqRes.rows || []);
-      const segRes = await api.getSeguimiento({ pageSize: 50 });
-      setSeguimiento(segRes.rows || []);
+      const catRes = await api.getCatalogo({ pageSize: 500 });
+      setCatalogoList(catRes.rows || []);
       const calRes = await api.getCalidadDatos().catch(() => null);
       setCalidadData(calRes);
     } catch (err) {
@@ -73,28 +70,73 @@ export function ConciliacionView() {
     }
   };
 
-  const handleSaveSeguimiento = async (e) => {
+  const handleOpenConteoModal = (preselectedItem = null) => {
+    setSelectedItem(preselectedItem);
+    setSearchModalSku(preselectedItem ? preselectedItem.sku : '');
+    setConteoFisicoVal(preselectedItem ? (preselectedItem.ultimo_conteo ?? preselectedItem.stock_fisico ?? '') : '');
+    setConteoFecha(new Date().toISOString().split('T')[0]);
+    setConteoAjusteKardex(true);
+    setConteoNotas('');
+    setShowUpsertModal(true);
+  };
+
+  const handleSaveConteoFisico = async (e) => {
     e.preventDefault();
+    if (!selectedItem || !selectedItem.sku) {
+      alert('Por favor selecciona un artículo del catálogo.');
+      return;
+    }
+    const conteoNum = Number(conteoFisicoVal);
+    if (isNaN(conteoNum) || conteoNum < 0) {
+      alert('Por favor ingresa un conteo físico válido (número >= 0).');
+      return;
+    }
+
     setSavingUpsert(true);
     try {
-      await api.upsertSeguimiento(upsertItem);
+      // 1. Actualizar el último conteo físico en la hoja Catálogo (que recalcula Conciliación)
+      await api.updateArticulo(selectedItem.sku, {
+        ultimo_conteo: conteoNum,
+        fecha_conteo: conteoFecha,
+      });
+
+      // 2. Si se solicitó ajuste en Kardex y hay diferencia con el saldo teórico
+      const stockTeorico = Number(selectedItem.stock_actual ?? selectedItem.stock_sistema ?? 0);
+      const diff = conteoNum - stockTeorico;
+      if (conteoAjusteKardex && diff !== 0) {
+        try {
+          await api.createMovimiento({
+            fecha: conteoFecha,
+            tipo: diff > 0 ? 'Ajuste (+)' : 'Ajuste (-)',
+            sku: selectedItem.sku,
+            cantidad: Math.abs(diff),
+            taller_destino: 'Bodega Central',
+            entregado_a: 'Auditoría Física de Bodega',
+            observaciones: conteoNotas || `Conteo físico a mano: ${conteoNum} unid. (Ajuste: ${diff > 0 ? '+' : ''}${diff})`,
+          });
+        } catch (mErr) {
+          console.warn('Nota de ajuste de kardex:', mErr);
+        }
+      }
+
       setShowUpsertModal(false);
-      alert('¡Conteo físico manual actualizado en Sheets!');
-      fetchData();
+      alert(`¡Conteo físico de ${selectedItem.sku} actualizado exitosamente!`);
+      await fetchData();
     } catch (err) {
-      alert('Error al actualizar conteo: ' + err.message);
+      alert('Error al registrar conteo físico: ' + err.message);
     } finally {
       setSavingUpsert(false);
     }
   };
 
-  const items = conciliacionData?.items || [];
-  const resumen = conciliacionData?.resumen || {
-    total: 128,
-    cuadra: 3,
-    faltante: 8,
-    sobrante: 12,
-    sin_conteo: 105,
+  const items = conciliacionData?.rows || conciliacionData?.items || [];
+  const rawSum = conciliacionData?.summary || conciliacionData?.resumen || {};
+  const resumen = {
+    total: rawSum.total ?? items.length,
+    cuadra: rawSum.cuadra ?? 0,
+    faltante: rawSum.faltante ?? 0,
+    sobrante: rawSum.sobrante ?? 0,
+    sin_conteo: rawSum.sin_conteo ?? 0,
   };
 
   const filteredItems = items.filter((it) => {
@@ -107,6 +149,17 @@ export function ConciliacionView() {
       statusFilter === 'TODOS' || (it.estado || '').toUpperCase() === statusFilter;
     return matchSearch && matchStatus;
   });
+
+  // Resultados de búsqueda en modal para selección de SKU o nombre
+  const modalCatalogResults = catalogoList.filter((it) => {
+    if (!searchModalSku.trim()) return false;
+    const q = searchModalSku.toLowerCase();
+    return (
+      (it.sku || '').toLowerCase().includes(q) ||
+      (it.descripcion || '').toLowerCase().includes(q) ||
+      (it.categoria || '').toLowerCase().includes(q)
+    );
+  }).slice(0, 8);
 
   return (
     <div className="space-y-6">
@@ -441,28 +494,18 @@ export function ConciliacionView() {
             <div>
               <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
                 <ClipboardList className="w-5 h-5 text-sky-400" />
-                Seguimiento Manual de Stock (Toma Física en Bodega)
+                Conteo Físico Real en Bodega (Inventario a Mano)
               </h3>
               <p className="text-xs text-slate-400">
-                Registros tomados directamente en bodega para cruce y conciliación
+                Auditoría y toma de stock físico en taller. Conectado al Catálogo Maestro y al motor de Conciliación.
               </p>
             </div>
             <button
-              onClick={() => {
-                setUpsertItem({
-                  id_articulo: 'INS-001',
-                  nombre_articulo: '',
-                  tipo: 'Consumible',
-                  stock: 0,
-                  stock_minimo: 10,
-                  estado: 'Normal',
-                  notas: '',
-                });
-                setShowUpsertModal(true);
-              }}
-              className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-sky-500/20 cursor-pointer"
+              onClick={() => handleOpenConteoModal()}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-400 hover:to-sky-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-sky-500/20 cursor-pointer"
             >
-              Actualizar Conteo Físico
+              <ClipboardList className="w-4 h-4" />
+              Tomar Conteo Físico
             </button>
           </div>
 
@@ -470,41 +513,52 @@ export function ConciliacionView() {
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-800 bg-slate-950/40 text-slate-400 uppercase font-bold tracking-wider">
-                  <th className="py-3 px-4">ID Artículo</th>
-                  <th className="py-3 px-4">Nombre Artículo</th>
-                  <th className="py-3 px-3">Tipo</th>
-                  <th className="py-3 px-3 text-right">Stock Físico</th>
-                  <th className="py-3 px-3 text-right">Stock Mínimo</th>
-                  <th className="py-3 px-4 text-center">Estado</th>
-                  <th className="py-3 px-4">Notas / Observaciones</th>
+                  <th className="py-3 px-4">SKU</th>
+                  <th className="py-3 px-4">Descripción del Insumo</th>
+                  <th className="py-3 px-3">Categoría</th>
+                  <th className="py-3 px-3 text-right">Stock Sistema</th>
+                  <th className="py-3 px-3 text-right">Último Conteo Físico</th>
+                  <th className="py-3 px-3 text-center">Fecha Conteo</th>
+                  <th className="py-3 px-4 text-center">Acción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-medium">
-                {seguimiento.map((seg, idx) => (
-                  <tr key={idx} className="hover:bg-slate-800/50 transition-colors">
-                    <td className="py-3 px-4 font-mono font-bold text-sky-400">
-                      {seg.id_articulo}
-                    </td>
-                    <td className="py-3 px-4 text-slate-100 font-semibold">
-                      {seg.nombre_articulo}
-                    </td>
-                    <td className="py-3 px-3 text-slate-400">
-                      {seg.tipo}
-                    </td>
-                    <td className="py-3 px-3 text-right font-black text-amber-400 font-mono text-sm">
-                      {seg.stock}
-                    </td>
-                    <td className="py-3 px-3 text-right text-slate-400 font-mono">
-                      {seg.stock_minimo}
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <Badge variant="default">{seg.estado || 'Normal'}</Badge>
-                    </td>
-                    <td className="py-3 px-4 text-slate-400 text-[11px] truncate max-w-xs">
-                      {seg.notas || '-'}
-                    </td>
-                  </tr>
-                ))}
+                {catalogoList.map((item, idx) => {
+                  const hasConteo = item.ultimo_conteo !== undefined && item.ultimo_conteo !== '' && item.ultimo_conteo !== null;
+                  const stockSis = Number(item.stock_actual ?? 0);
+                  const stockFis = Number(item.ultimo_conteo ?? 0);
+
+                  return (
+                    <tr key={idx} className="hover:bg-slate-800/50 transition-colors">
+                      <td className="py-3 px-4 font-mono font-bold text-sky-400">
+                        {item.sku}
+                      </td>
+                      <td className="py-3 px-4 text-slate-100 font-semibold">
+                        {item.descripcion}
+                      </td>
+                      <td className="py-3 px-3 text-slate-400">
+                        {item.categoria || '-'}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono text-slate-300">
+                        {stockSis} {item.unidad}
+                      </td>
+                      <td className="py-3 px-3 text-right font-black text-amber-400 font-mono text-sm">
+                        {hasConteo ? `${stockFis} ${item.unidad}` : <span className="text-slate-600 font-normal">Sin conteo</span>}
+                      </td>
+                      <td className="py-3 px-3 text-center text-slate-400 text-[11px]">
+                        {item.fecha_conteo ? String(item.fecha_conteo).slice(0, 10) : '-'}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <button
+                          onClick={() => handleOpenConteoModal(item)}
+                          className="px-2.5 py-1 bg-sky-500/10 text-sky-400 hover:bg-sky-500 hover:text-slate-950 rounded-lg text-[11px] font-bold border border-sky-500/30 transition-all cursor-pointer"
+                        >
+                          Actualizar Conteo
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -608,83 +662,177 @@ export function ConciliacionView() {
         </div>
       )}
 
-      {/* Modal Upsert Seguimiento */}
+      {/* Modal Inteligente: Actualizar Conteo Físico Manual (Búsqueda por SKU o Nombre) */}
       <Modal
         isOpen={showUpsertModal}
         onClose={() => setShowUpsertModal(false)}
-        title="Actualizar Conteo Físico Manual (Bodega)"
-        maxWidth="max-w-md"
+        title="Actualizar Conteo Físico a Mano (Bodega)"
+        maxWidth="max-w-lg"
       >
-        <form onSubmit={handleSaveSeguimiento} className="space-y-4">
+        <form onSubmit={handleSaveConteoFisico} className="space-y-4">
+          {/* Buscador de SKU o Nombre */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">
-              ID del Artículo (INS)
+              Buscar Insumo por SKU o Nombre (en vivo)
             </label>
-            <input
-              type="text"
-              required
-              placeholder="Ej: INS-001"
-              value={upsertItem.id_articulo}
-              onChange={(e) => setUpsertItem({ ...upsertItem, id_articulo: e.target.value.toUpperCase() })}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold text-sky-400 focus:outline-hidden"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
-              Nombre del Artículo
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="Ej: Lija de Agua Grano 80"
-              value={upsertItem.nombre_articulo}
-              onChange={(e) => setUpsertItem({ ...upsertItem, nombre_articulo: e.target.value })}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Conteo Físico (Stock)
-              </label>
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
-                type="number"
-                min="0"
-                required
-                value={upsertItem.stock}
-                onChange={(e) => setUpsertItem({ ...upsertItem, stock: Number(e.target.value) })}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-amber-400 font-bold focus:outline-hidden"
+                type="text"
+                placeholder="Escribe SKU o palabra clave (ej: lija, thinner, disco, ABR-001)..."
+                value={searchModalSku}
+                onChange={(e) => {
+                  setSearchModalSku(e.target.value);
+                  if (selectedItem && !e.target.value.includes(selectedItem.sku)) {
+                    setSelectedItem(null);
+                  }
+                }}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-hidden focus:border-sky-500"
               />
             </div>
+
+            {/* Lista desplegable de coincidencias */}
+            {!selectedItem && modalCatalogResults.length > 0 && (
+              <div className="mt-1 max-h-48 overflow-y-auto bg-slate-950 border border-slate-800 rounded-xl divide-y divide-slate-800/80 shadow-2xl z-20">
+                {modalCatalogResults.map((it) => (
+                  <div
+                    key={it.sku}
+                    onClick={() => {
+                      setSelectedItem(it);
+                      setSearchModalSku(`${it.sku} - ${it.descripcion}`);
+                      setConteoFisicoVal(it.ultimo_conteo ?? it.stock_actual ?? '');
+                    }}
+                    className="p-2.5 hover:bg-slate-800/80 cursor-pointer transition flex items-center justify-between text-xs"
+                  >
+                    <div>
+                      <span className="font-mono font-bold text-sky-400 mr-2">{it.sku}</span>
+                      <span className="text-slate-200">{it.descripcion}</span>
+                      <span className="text-[11px] text-slate-500 block">
+                        Categoría: {it.categoria} · {it.unidad}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-slate-400 block">Stock Sistema:</span>
+                      <span className="font-mono font-bold text-slate-100">
+                        {it.stock_actual ?? 0} {it.unidad}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Ficha del artículo seleccionado */}
+          {selectedItem && (
+            <div className="p-3 bg-sky-950/30 border border-sky-500/30 rounded-xl space-y-1 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-mono font-bold text-sky-400 text-sm">{selectedItem.sku}</span>
+                <span className="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-semibold text-[11px]">
+                  {selectedItem.categoria}
+                </span>
+              </div>
+              <p className="text-slate-200 font-semibold">{selectedItem.descripcion}</p>
+              <div className="flex items-center justify-between pt-1 text-slate-400 text-[11px]">
+                <span>Unidad: <strong className="text-slate-200">{selectedItem.unidad}</strong></span>
+                <span>Stock Sistema: <strong className="text-emerald-400 font-mono">{selectedItem.stock_actual ?? 0}</strong></span>
+                <span>Último conteo previo: <strong className="text-amber-400 font-mono">{selectedItem.ultimo_conteo ?? 'N/D'}</strong></span>
+              </div>
+            </div>
+          )}
+
+          {/* Inputs de Conteo Físico y Fecha */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Stock Mínimo
+              <label className="block text-xs font-semibold text-amber-300 mb-1">
+                Nuevo Conteo Físico Real (a mano) *
               </label>
               <input
                 type="number"
                 min="0"
-                value={upsertItem.stock_minimo}
-                onChange={(e) => setUpsertItem({ ...upsertItem, stock_minimo: Number(e.target.value) })}
+                step="any"
+                required
+                placeholder="Cantidad contada"
+                value={conteoFisicoVal}
+                onChange={(e) => setConteoFisicoVal(e.target.value)}
+                className="w-full bg-slate-800 border border-amber-500/50 rounded-xl px-3 py-2 text-sm text-amber-400 font-bold font-mono focus:outline-hidden focus:border-amber-400"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Fecha de Toma Física
+              </label>
+              <input
+                type="date"
+                required
+                value={conteoFecha}
+                onChange={(e) => setConteoFecha(e.target.value)}
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden"
               />
             </div>
           </div>
 
+          {/* Banner de Diferencia en tiempo real */}
+          {selectedItem && conteoFisicoVal !== '' && !isNaN(Number(conteoFisicoVal)) && (
+            (() => {
+              const conteo = Number(conteoFisicoVal);
+              const teorico = Number(selectedItem.stock_actual ?? 0);
+              const diff = conteo - teorico;
+              return (
+                <div
+                  className={`p-3 rounded-xl border flex items-center justify-between text-xs font-semibold ${
+                    diff === 0
+                      ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-400'
+                      : diff < 0
+                      ? 'bg-rose-950/30 border-rose-500/40 text-rose-400'
+                      : 'bg-sky-950/30 border-sky-500/40 text-sky-400'
+                  }`}
+                >
+                  <span>
+                    {diff === 0
+                      ? '✔ Cuadra exactamente con el saldo teórico'
+                      : diff < 0
+                      ? `⚠ Faltante físico de ${Math.abs(diff)} ${selectedItem.unidad}`
+                      : `↗ Sobrante físico de +${diff} ${selectedItem.unidad}`}
+                  </span>
+                  <span className="font-mono text-sm">
+                    Dif: {diff > 0 ? `+${diff}` : diff} {selectedItem.unidad}
+                  </span>
+                </div>
+              );
+            })()
+          )}
+
+          {/* Checkbox Ajuste Kardex */}
+          <div className="flex items-center gap-2 pt-1">
+            <input
+              type="checkbox"
+              id="ajusteKardex"
+              checked={conteoAjusteKardex}
+              onChange={(e) => setConteoAjusteKardex(e.target.checked)}
+              className="w-4 h-4 text-sky-500 rounded border-slate-700 focus:ring-0 cursor-pointer"
+            />
+            <label htmlFor="ajusteKardex" className="text-xs text-slate-300 select-none cursor-pointer">
+              Registrar movimiento automático de Ajuste en Kardex si existe diferencia
+            </label>
+          </div>
+
+          {/* Observaciones */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">
-              Notas del Conteo
+              Observaciones / Auditoría (opcional)
             </label>
             <input
               type="text"
-              placeholder="Ej: Conteo físico verificado en anaquel 3"
-              value={upsertItem.notas}
-              onChange={(e) => setUpsertItem({ ...upsertItem, notas: e.target.value })}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-hidden"
+              placeholder="Ej: Verificado por Cristian Cajul en anaquel de lija"
+              value={conteoNotas}
+              onChange={(e) => setConteoNotas(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-hidden"
             />
           </div>
 
+          {/* Botones de acción */}
           <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-800">
             <button
               type="button"
@@ -695,10 +843,10 @@ export function ConciliacionView() {
             </button>
             <button
               type="submit"
-              disabled={savingUpsert}
-              className="px-5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-sky-500/20 cursor-pointer"
+              disabled={savingUpsert || !selectedItem}
+              className="px-5 py-2 bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-400 hover:to-sky-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-sky-500/20 cursor-pointer disabled:opacity-50"
             >
-              {savingUpsert ? 'Guardando...' : 'Actualizar en Sheets'}
+              {savingUpsert ? 'Guardando en Sheets...' : 'Guardar Conteo en Sheets y Recalcular'}
             </button>
           </div>
         </form>

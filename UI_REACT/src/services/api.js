@@ -180,12 +180,16 @@ async function computeLocalForecast(params = {}) {
         dias_cobertura: diasCobertura,
         rop: rop,
         alerta: nivel,
+        nivel: nivel,
         motivo: motivo,
+        causa: motivo,
         accion_recomendada: accion,
+        accion: accion,
         proveedor_preferido: it.proveedor_pref || 'Freund',
         unidad: it.unidad || 'unidad',
         pmp: it.pmp || it.precio_ref_neto || 0,
         sugerencia_compra: Math.max(0, Math.ceil(rop * 2 - stockActual)),
+        cantidad_sugerida: Math.max(0, Math.ceil(rop * 2 - stockActual)),
       });
     });
 
@@ -195,10 +199,15 @@ async function computeLocalForecast(params = {}) {
     return {
       resumen: {
         rojo: cRojo,
+        ROJO: cRojo,
         naranja: cNaranja,
+        NARANJA: cNaranja,
         amarillo: cAmarillo,
+        AMARILLO: cAmarillo,
         verde: cVerde,
+        VERDE: cVerde,
         gris: cGris,
+        GRIS: cGris,
         total_alertas: cRojo + cNaranja + cAmarillo,
       },
       alertas: alertas,
@@ -208,7 +217,7 @@ async function computeLocalForecast(params = {}) {
   } catch (err) {
     console.error('Error calculando forecast local:', err);
     return {
-      resumen: { rojo: 0, naranja: 0, amarillo: 0, verde: 0, gris: 0, total_alertas: 0 },
+      resumen: { rojo: 0, ROJO: 0, naranja: 0, NARANJA: 0, amarillo: 0, AMARILLO: 0, verde: 0, VERDE: 0, gris: 0, GRIS: 0, total_alertas: 0 },
       alertas: [],
     };
   }
