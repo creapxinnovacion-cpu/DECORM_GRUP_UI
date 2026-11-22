@@ -5,8 +5,8 @@ import { Modal } from './Modal';
 
 export function LoginModal({ isOpen, onClose }) {
   const { login } = useAuth();
-  const [username, setUsername] = useState('cristian');
-  const [pin, setPin] = useState('123456');
+  const [username, setUsername] = useState('');
+  const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -24,11 +24,6 @@ export function LoginModal({ isOpen, onClose }) {
     }
   };
 
-  const setDemoUser = (u, p) => {
-    setUsername(u);
-    setPin(p);
-  };
-
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Acceso al Sistema Maestro DICORMS" maxWidth="max-w-md">
       <div className="space-y-4">
@@ -38,7 +33,7 @@ export function LoginModal({ isOpen, onClose }) {
           </div>
           <h4 className="font-bold text-slate-100 text-base">Iniciar Sesión</h4>
           <p className="text-xs text-slate-400 mt-0.5">
-            Autenticación HMAC-SHA256 con Control de Acceso por Roles (RBAC)
+            Autenticación Segura HMAC-SHA256 con Control de Acceso por Roles (RBAC)
           </p>
         </div>
 
@@ -61,7 +56,8 @@ export function LoginModal({ isOpen, onClose }) {
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Ej: cristian"
+                placeholder="Nombre de usuario"
+                autoComplete="username"
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-hidden focus:border-amber-500"
               />
             </div>
@@ -79,6 +75,7 @@ export function LoginModal({ isOpen, onClose }) {
                 value={pin}
                 onChange={(e) => setPin(e.target.value)}
                 placeholder="******"
+                autoComplete="current-password"
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-hidden focus:border-amber-500"
               />
             </div>
@@ -98,20 +95,6 @@ export function LoginModal({ isOpen, onClose }) {
             )}
           </button>
         </form>
-
-        {/* Demo Fast Login */}
-        <div className="pt-3 border-t border-slate-800">
-          <p className="text-[11px] text-slate-500 mb-2 font-semibold">Credenciales del Sistema v2.0:</p>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setDemoUser('cristian', '123456')}
-              className="flex-1 py-1 px-2 bg-slate-800/80 hover:bg-slate-800 text-[11px] text-amber-400 rounded-lg border border-slate-700 transition-colors"
-            >
-              cristian (Admin)
-            </button>
-          </div>
-        </div>
       </div>
     </Modal>
   );

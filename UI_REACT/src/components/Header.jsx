@@ -13,6 +13,7 @@ import {
   RefreshCw,
   ShieldCheck,
   User,
+  KeyRound,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -69,10 +70,15 @@ const MODULE_META = {
   },
 };
 
-export function Header({ activeTab, onRefresh, refreshing, onLoginClick }) {
+export function Header({ activeTab, onRefresh, refreshing, onLoginClick, onOpenPasswordModal }) {
   const { user } = useAuth();
   const meta = MODULE_META[activeTab] || MODULE_META.dashboard;
   const Icon = meta.icon;
+
+  const esCristian = user && (
+    user.username?.toLowerCase() === 'cristian' ||
+    user.nombre?.toLowerCase().includes('cristian')
+  );
 
   return (
     <header className="h-14 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 shrink-0 px-4 sm:px-6 flex items-center justify-between z-20 select-none">
@@ -122,6 +128,15 @@ export function Header({ activeTab, onRefresh, refreshing, onLoginClick }) {
                 {user.role} · {user.taller || 'Taller'}
               </span>
             </div>
+            {esCristian && (
+              <button
+                onClick={onOpenPasswordModal}
+                title="Actualizar Contraseñas / PINs (Exclusivo Cristian Cajul)"
+                className="p-1.5 ml-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 text-xs transition cursor-pointer"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         ) : (
           <button

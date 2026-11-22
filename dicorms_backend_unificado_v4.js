@@ -560,6 +560,8 @@ function getRoutes_() {
 
     'auth.login': handleAuthLogin_,
     'auth.me': function(p, u) { return u; },
+    'auth.updatePassword': handleAuthUpdatePassword_,
+    'auth.cambiarPin': handleAuthUpdatePassword_,
     'config.get': handleConfigGet_,
     'schema.validate': handleSchemaValidate_,
 
@@ -1782,31 +1784,185 @@ function handleAuthLogin_(params) {
   let shUsers = ss.getSheetByName('_USERS');
   if (!shUsers) {
     shUsers = ss.insertSheet('_USERS');
-    shUsers.appendRow(['username', 'nombre', 'rol', 'pin_sha256', 'taller', 'activo']);
-    shUsers.appendRow(['cristian', 'Cristian Cajul', 'admin', sha256_('123456'), 'Todos', true]);
+    shUsers.appendRow(['username', 'nombre', 'rol', 'salt', 'pin_sha256', 'taller', 'activo', 'intentos_fallidos', 'bloqueado_hasta']);
+    shUsers.appendRow(['cristian', 'Cristian Cajul', 'admin', 'salt_cris_v4', sha256_('123456'), 'Todos', true, 0, '']);
+    shUsers.appendRow(['emma', 'Enmanuel Sanches', 'admin', 'salt_emma_v4', sha256_('123456'), 'Todos', true, 0, '']);
   }
 
   const rows = shUsers.getDataRange().getValues();
-  const pinHash = sha256_(pin);
+  if (rows.length < 2) {
+    throw appError_('AUTH', 'No hay registros en la tabla de usuarios (_USERS).');
+  }
+
+  // Detección dinámica y robusta de encabezados
+  const headers = rows[0].map(function(h) { return String(h || '').trim().toLowerCase(); });
+  const colUser = headers.indexOf('username') !== -1 ? headers.indexOf('username') : 0;
+  const colNombre = headers.indexOf('nombre') !== -1 ? headers.indexOf('nombre') : 1;
+  const colRol = headers.indexOf('rol') !== -1 ? headers.indexOf('rol') : 2;
+  const colSalt = headers.indexOf('salt');
+  const colPin = headers.indexOf('pin_sha256') !== -1 ? headers.indexOf('pin_sha256') : (colSalt !== -1 ? 4 : 3);
+  const colTaller = headers.indexOf('taller') !== -1 ? headers.indexOf('taller') : (colSalt !== -1 ? 5 : 4);
+  const colActivo = headers.indexOf('activo') !== -1 ? headers.indexOf('activo') : (colSalt !== -1 ? 6 : 5);
+  const colIntentos = headers.indexOf('intentos_fallidos');
+  const colBloqueado = headers.indexOf('bloqueado_hasta');
+
+  const now = Date.now();
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
-    if (String(r[0]).toLowerCase() === username.toLowerCase() && Boolean(r[5]) !== false) {
-      if (String(r[3]) === pinHash || String(r[3]) === pin) {
+    const uName = String(r[colUser] || '').trim().toLowerCase();
+    if (uName === username.toLowerCase()) {
+      // 1. Verificación de usuario activo
+      const isActivo = colActivo !== -1 
+        ? (r[colActivo] === true || String(r[colActivo]).toUpperCase() === 'TRUE' || r[colActivo] === 1) 
+        : true;
+      if (!isActivo) {
+        throw appError_('AUTH', 'Usuario inactivo. Contacte al administrador Cristian Cajul.');
+      }
+
+      // 2. Verificación de bloqueo temporal (R-47: 5 intentos fallidos -> bloqueo 15 min)
+      if (colBloqueado !== -1 && r[colBloqueado]) {
+        const blkDate = new Date(r[colBloqueado]).getTime();
+        if (!isNaN(blkDate) && blkDate > now) {
+          const mins = Math.ceil((blkDate - now) / 60000);
+          throw appError_('AUTH', 'Cuenta bloqueada temporalmente por intentos fallidos. Intente de nuevo en ' + mins + ' min.');
+        }
+      }
+
+      // 3. Verificación de PIN / Contraseña (Soporta sha256 puro, salt+pin, pin+salt o texto plano)
+      const storedHash = String(r[colPin] || '').trim();
+      const userSalt = colSalt !== -1 ? String(r[colSalt] || '').trim() : '';
+
+      const hashPlain = sha256_(pin);
+      const hashSaltPref = userSalt ? sha256_(userSalt + pin) : '';
+      const hashSaltSuff = userSalt ? sha256_(pin + userSalt) : '';
+
+      const match = (storedHash === hashPlain) ||
+                    (userSalt && storedHash === hashSaltPref) ||
+                    (userSalt && storedHash === hashSaltSuff) ||
+                    (storedHash === pin);
+
+      if (match) {
+        // Reset de intentos fallidos
+        if (colIntentos !== -1 && (Number(r[colIntentos]) > 0 || r[colBloqueado])) {
+          try {
+            shUsers.getRange(i + 1, colIntentos + 1).setValue(0);
+            if (colBloqueado !== -1) shUsers.getRange(i + 1, colBloqueado + 1).setValue('');
+          } catch(e) {}
+        }
+
         const userPayload = {
-          username: r[0],
-          nombre: r[1],
-          role: r[2] || 'lectura',
-          taller: r[4] || 'Todos',
-          exp: Date.now() + SCRIPT_CONFIG.TOKEN_TTL_MS,
+          username: r[colUser],
+          nombre: r[colNombre] || r[colUser],
+          role: r[colRol] || 'lectura',
+          taller: (colTaller !== -1 ? r[colTaller] : 'Todos') || 'Todos',
+          exp: now + SCRIPT_CONFIG.TOKEN_TTL_MS,
         };
+
+        logAudit_(userPayload, 'LOGIN_SUCCESS', '_USERS', r[colUser], null, { at: new Date() });
+
         return {
           token: signToken_(userPayload),
           user: userPayload,
         };
+      } else {
+        // Incremento de intentos fallidos
+        if (colIntentos !== -1) {
+          const fallidos = (Number(r[colIntentos]) || 0) + 1;
+          try {
+            shUsers.getRange(i + 1, colIntentos + 1).setValue(fallidos);
+            if (fallidos >= 5 && colBloqueado !== -1) {
+              const lockUntil = new Date(now + 15 * 60 * 1000);
+              shUsers.getRange(i + 1, colBloqueado + 1).setValue(lockUntil);
+              throw appError_('AUTH', 'Ha superado el límite de 5 intentos. Su cuenta ha sido bloqueada por 15 minutos.');
+            }
+          } catch(e) {
+            if (e.message && e.message.indexOf('Ha superado') !== -1) throw e;
+          }
+        }
+        throw appError_('AUTH', 'PIN de acceso incorrecto para ' + username + '.');
       }
     }
   }
-  throw appError_('AUTH', 'Credenciales inválidas o usuario inactivo.');
+  throw appError_('AUTH', 'Usuario "' + username + '" no existe en el sistema.');
+}
+
+/**
+ * R-47: Actualización de Contraseñas / PINs
+ * RESTRICCIÓN DE SEGURIDAD ESTRICTA:
+ * ÚNICAMENTE Cristian Cajul tiene autorización para actualizar o restablecer contraseñas en el sistema.
+ */
+function handleAuthUpdatePassword_(params, user) {
+  const reqUser = String((user && user.username) || '').toLowerCase();
+  const reqRole = String((user && user.role) || '').toLowerCase();
+  const esCristian = reqUser === 'cristian' || reqUser === 'cristian cajul' || (reqRole === 'admin' && reqUser.indexOf('cris') !== -1);
+
+  if (!esCristian) {
+    throw appError_('FORBIDDEN', 'Operación denegada: ÚNICAMENTE Cristian Cajul tiene permisos para modificar o resetear contraseñas en DICORMS.');
+  }
+
+  const targetUser = String((params && params.target_username) || (params && params.username) || '').trim();
+  const newPin = String((params && params.new_pin) || (params && params.pin) || '').trim();
+
+  if (!targetUser) throw appError_('VALIDATION', 'Debe especificar el usuario a actualizar.');
+  if (!newPin || newPin.length < 4) throw appError_('VALIDATION', 'El nuevo PIN debe contener al menos 4 caracteres.');
+
+  const ss = getSpreadsheet_();
+  const shUsers = ss.getSheetByName('_USERS');
+  if (!shUsers) throw appError_('NOT_FOUND', 'No se encontró la hoja _USERS.');
+
+  const rows = shUsers.getDataRange().getValues();
+  const headers = rows[0].map(function(h) { return String(h || '').trim().toLowerCase(); });
+  const colUser = headers.indexOf('username') !== -1 ? headers.indexOf('username') : 0;
+  const colSalt = headers.indexOf('salt');
+  const colPin = headers.indexOf('pin_sha256') !== -1 ? headers.indexOf('pin_sha256') : (colSalt !== -1 ? 4 : 3);
+  const colIntentos = headers.indexOf('intentos_fallidos');
+  const colBloqueado = headers.indexOf('bloqueado_hasta');
+
+  let foundRow = -1;
+  let userSalt = '';
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][colUser] || '').trim().toLowerCase() === targetUser.toLowerCase()) {
+      foundRow = i + 1;
+      if (colSalt !== -1) userSalt = String(rows[i][colSalt] || '').trim();
+      break;
+    }
+  }
+
+  if (foundRow === -1) {
+    throw appError_('NOT_FOUND', 'El usuario "' + targetUser + '" no existe en _USERS.');
+  }
+
+  // Generamos el nuevo hash SHA-256 Base64
+  const newHash = sha256_(newPin);
+  shUsers.getRange(foundRow, colPin + 1).setValue(newHash);
+
+  // Reiniciar intentos fallidos y desbloquear
+  if (colIntentos !== -1) shUsers.getRange(foundRow, colIntentos + 1).setValue(0);
+  if (colBloqueado !== -1) shUsers.getRange(foundRow, colBloqueado + 1).setValue('');
+
+  logAudit_(user, 'UPDATE_PASSWORD', '_USERS', targetUser, null, {
+    modificado_por: user.username,
+    nuevo_hash_sha256: newHash,
+    fecha: new Date(),
+  });
+
+  return {
+    ok: true,
+    message: 'Contraseña/PIN de ' + targetUser + ' actualizado exitosamente.',
+    target_username: targetUser,
+    nuevo_pin_sha256: newHash
+  };
+}
+
+/**
+ * Función utilitaria para ejecutar desde el Editor de Apps Script directamente:
+ * Cristian puede abrir Apps Script, seleccionar esta función y cambiar cualquier PIN.
+ */
+function cambiarPinUsuario(targetUsername, nuevoPin) {
+  return handleAuthUpdatePassword_(
+    { target_username: targetUsername || 'cristian', new_pin: nuevoPin || '123456' },
+    { username: 'cristian', role: 'admin' }
+  );
 }
 
 function verifyTokenAndAuthorize_(token, action) {

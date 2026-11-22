@@ -12,8 +12,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _usernameController = TextEditingController(text: 'cristian');
-  final _pinController = TextEditingController(text: '123456');
+  final _usernameController = TextEditingController();
+  final _pinController = TextEditingController();
   bool _obscurePin = true;
 
   void _submit() async {
@@ -170,25 +170,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           'INGRESAR A BODEGA',
                           style: TextStyle(letterSpacing: 0.5),
                         ),
-                ),
-
-                const SizedBox(height: 32),
-
-                // Quick Demo user
-                Center(
-                  child: TextButton.icon(
-                    onPressed: () {
-                      _usernameController.text = 'cristian';
-                      _pinController.text = '123456';
-                    },
-                    icon: const Icon(Icons.flash_on,
-                        color: DecormTheme.primaryAmber, size: 16),
-                    label: const Text(
-                      'Usar credenciales cristian (Admin)',
-                      style: TextStyle(
-                          color: DecormTheme.primaryAmber, fontSize: 12),
-                    ),
-                  ),
                 ),
               ],
             ),

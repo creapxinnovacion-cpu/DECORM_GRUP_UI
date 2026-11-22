@@ -230,6 +230,9 @@ export const api = {
     }
     return data;
   },
+  updatePassword: async (targetUsername, newPin) => {
+    return await apiRequest('auth.updatePassword', { target_username: targetUsername, new_pin: newPin });
+  },
   me: () => apiRequest('auth.me'),
   logout: () => {
     setAuthToken(null);

@@ -3,6 +3,7 @@ import { AuthProvider } from './context/AuthContext';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { LoginModal } from './components/LoginModal';
+import { CambiarPasswordModal } from './components/CambiarPasswordModal';
 import { DashboardView } from './views/DashboardView';
 import { CatalogoView } from './views/CatalogoView';
 import { ComprasView } from './views/ComprasView';
@@ -19,6 +20,7 @@ function MainLayout() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -42,6 +44,7 @@ function MainLayout() {
         }}
         onRefresh={handleRefresh}
         refreshing={refreshing}
+        onOpenPasswordModal={() => setShowPasswordModal(true)}
       />
 
       {/* 2. Área Central de Contenido */}
@@ -52,6 +55,7 @@ function MainLayout() {
           onRefresh={handleRefresh}
           refreshing={refreshing}
           onLoginClick={() => setShowLoginModal(true)}
+          onOpenPasswordModal={() => setShowPasswordModal(true)}
         />
 
         {/* Contenedor Principal con Scroll Independiente y padding inferior en móvil para no tapar con la barra */}
@@ -82,6 +86,12 @@ function MainLayout() {
       <LoginModal
         isOpen={showLoginModal}
         onClose={() => setShowLoginModal(false)}
+      />
+
+      {/* Modal de Cambio de Contraseñas (Exclusivo Cristian Cajul) */}
+      <CambiarPasswordModal
+        isOpen={showPasswordModal}
+        onClose={() => setShowPasswordModal(false)}
       />
     </div>
   );

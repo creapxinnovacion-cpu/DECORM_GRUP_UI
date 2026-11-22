@@ -13,6 +13,7 @@ import {
   User,
   ShieldCheck,
   LogOut,
+  KeyRound,
   RefreshCw,
   MoreHorizontal,
   X,
@@ -22,10 +23,15 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 
-export function Sidebar({ activeTab, setActiveTab, onRefresh, refreshing }) {
+export function Sidebar({ activeTab, setActiveTab, onRefresh, refreshing, onOpenPasswordModal }) {
   const { user, logout } = useAuth();
   const [criticalCount, setCriticalCount] = useState(0);
   const [showMoreMobile, setShowMoreMobile] = useState(false);
+
+  const esCristian = user && (
+    user.username?.toLowerCase() === 'cristian' ||
+    user.nombre?.toLowerCase().includes('cristian')
+  );
 
   // Obtener conteo de alertas críticas de abastecimiento (Badge rojo en Abastecimiento)
   useEffect(() => {
@@ -211,13 +217,24 @@ export function Sidebar({ activeTab, setActiveTab, onRefresh, refreshing }) {
                 </div>
               </div>
 
-              <button
-                onClick={logout}
-                title="Cerrar Sesión"
-                className="hidden xl:block p-1 text-slate-500 hover:text-rose-400 transition cursor-pointer"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-1">
+                {esCristian && (
+                  <button
+                    onClick={onOpenPasswordModal}
+                    title="Actualizar Contraseñas / PINs (Exclusivo Cristian Cajul)"
+                    className="hidden xl:flex p-1 text-amber-400 hover:text-amber-300 transition cursor-pointer"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button
+                  onClick={logout}
+                  title="Cerrar Sesión"
+                  className="hidden xl:block p-1 text-slate-500 hover:text-rose-400 transition cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           ) : (
             <button
@@ -357,15 +374,29 @@ export function Sidebar({ activeTab, setActiveTab, onRefresh, refreshing }) {
                     <p className="text-xs font-bold text-slate-200">{user.nombre || user.username}</p>
                     <p className="text-[10px] text-amber-400">{user.role} · {user.taller || 'General'}</p>
                   </div>
-                  <button
-                    onClick={() => {
-                      logout();
-                      setShowMoreMobile(false);
-                    }}
-                    className="px-3 py-1 bg-rose-600/20 text-rose-400 border border-rose-500/30 rounded-lg text-xs font-bold"
-                  >
-                    Salir
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {esCristian && (
+                      <button
+                        onClick={() => {
+                          setShowMoreMobile(false);
+                          if (onOpenPasswordModal) onOpenPasswordModal();
+                        }}
+                        className="px-2.5 py-1 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg text-xs font-bold flex items-center gap-1"
+                      >
+                        <KeyRound className="w-3 h-3" />
+                        <span>PINs</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        logout();
+                        setShowMoreMobile(false);
+                      }}
+                      className="px-3 py-1 bg-rose-600/20 text-rose-400 border border-rose-500/30 rounded-lg text-xs font-bold"
+                    >
+                      Salir
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <button
