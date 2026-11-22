@@ -141,8 +141,8 @@ const SCHEMA = {
 
   catalogo: {
     sheet: 'Catalogo',
-    headerRow: 2,
-    firstRow: 3,
+    headerRow: 3,
+    firstRow: 4,
     pk: 'sku',
     slotCols: ['SKU'],
     inputs: {
@@ -152,7 +152,7 @@ const SCHEMA = {
       unidad: 'Unidad',
       origen: 'Origen',
       proveedor_pref: 'Proveedor preferido',
-      sku_anterior: 'SKU anterior / cód. proveedor',
+      sku_anterior: 'SKU anterior / cód. prov.',
       stock_inicial: 'Stock inicial',
       stock_minimo: 'Stock mínimo',
       ultimo_conteo: 'Último conteo físico',
@@ -633,10 +633,25 @@ function headerMap_(sh, headerRow) {
   const headers = sh.getRange(headerRow, 1, 1, maxCol).getValues()[0];
   const map = {};
   for (let c = 0; c < headers.length; c++) {
-    const h = String(headers[c] || '').trim();
-    if (h) map[h] = c + 1;
+    const raw = String(headers[c] || '').trim();
+    if (!raw) continue;
+    map[raw] = c + 1;
+    const lower = raw.toLowerCase();
+    map[lower] = c + 1;
+    const clean = lower.replace(/\s*\[.*?\]/g, '').trim();
+    if (clean) map[clean] = c + 1;
   }
   return map;
+}
+
+function getColIdx_(cols, name) {
+  if (!cols || !name) return undefined;
+  if (cols[name] !== undefined) return cols[name];
+  const lower = String(name).toLowerCase();
+  if (cols[lower] !== undefined) return cols[lower];
+  const clean = lower.replace(/\s*\[.*?\]/g, '').trim();
+  if (cols[clean] !== undefined) return cols[clean];
+  return undefined;
 }
 
 function firstFreeRow_(sh, def, cols) {
@@ -647,8 +662,9 @@ function firstFreeRow_(sh, def, cols) {
   const maxCol = sh.getLastColumn();
   const data = sh.getRange(def.firstRow, 1, numRows, maxCol).getValues();
   const slotIndices = def.slotCols.map(function(sc) {
-    if (!cols[sc]) throw appError_('SCHEMA_MISMATCH', 'Falta columna clave ' + sc + ' en ' + def.sheet);
-    return cols[sc] - 1;
+    const cIdx = getColIdx_(cols, sc);
+    if (!cIdx) throw appError_('SCHEMA_MISMATCH', 'Falta columna clave ' + sc + ' en ' + def.sheet);
+    return cIdx - 1;
   });
 
   let totalRowIndex = -1;
@@ -684,7 +700,7 @@ function ensureCapacity_(sh, def, totalRowIndex) {
   const cols = headerMap_(sh, def.headerRow);
   Object.keys(def.inputs).forEach(function(apiKey) {
     const colName = def.inputs[apiKey];
-    const colIdx = cols[colName];
+    const colIdx = getColIdx_(cols, colName);
     if (colIdx) {
       sh.getRange(templateRow + 1, colIdx, addRows, 1).clearContent();
     }
@@ -697,7 +713,7 @@ function writeInputs_(sh, row, cols, def, payload) {
   Object.keys(def.inputs).forEach(function(apiKey) {
     if (payload[apiKey] === undefined) return;
     const colName = def.inputs[apiKey];
-    const colIdx = cols[colName];
+    const colIdx = getColIdx_(cols, colName);
     if (!colIdx) {
       throw appError_('SCHEMA_MISMATCH', 'Columna no encontrada en ' + def.sheet + ': ' + colName);
     }
@@ -714,7 +730,7 @@ function readRow_(sh, row, cols, def) {
   const allMappings = Object.assign({}, def.inputs, def.computed);
   Object.keys(allMappings).forEach(function(apiKey) {
     const colName = allMappings[apiKey];
-    const colIdx = cols[colName];
+    const colIdx = getColIdx_(cols, colName);
     if (colIdx) {
       const raw = values[colIdx - 1];
       if (raw instanceof Date) {
@@ -870,14 +886,16 @@ function listEntity_(entity, params) {
     if (firstVal === 'TOTAL' || firstVal === 'RESUMEN') continue;
 
     const hasSlot = def.slotCols.some(function(sc) {
-      const idx = cols[sc] - 1;
+      const cIdx = getColIdx_(cols, sc);
+      if (!cIdx) return false;
+      const idx = cIdx - 1;
       return rowArr[idx] !== '' && rowArr[idx] !== null && rowArr[idx] !== undefined;
     });
     if (!hasSlot) continue;
 
     const item = { _rowNumber: def.firstRow + i };
     Object.keys(allMappings).forEach(function(apiKey) {
-      const colIdx = cols[allMappings[apiKey]];
+      const colIdx = getColIdx_(cols, allMappings[apiKey]);
       if (colIdx) {
         const val = rowArr[colIdx - 1];
         if (val instanceof Date) {
@@ -1458,8 +1476,13 @@ function handleCotizacionesList_(params) {
 
   // Enlazar líneas a cada cabecera
   const result = filtered.map(function(cab) {
+    let cleanCotId = String(cab.cotizacion_id || '').trim();
+    if (cleanCotId === '[object Object]' || !cleanCotId) {
+      cleanCotId = String(cab.uid || ('COT-26-' + ('000' + cab._rowNumber).slice(-3)));
+    }
+
     const lines = detalles.filter(function(d) {
-      return String(d.cotizacion_id).trim() === String(cab.cotizacion_id).trim();
+      return String(d.cotizacion_id).trim() === cleanCotId || String(d.cotizacion_id).trim() === String(cab.cotizacion_id).trim();
     }).map(function(d) {
       return {
         incluir: d.incluir === true || String(d.incluir).toUpperCase() === 'SI' || String(d.incluir).toUpperCase() === 'TRUE',
@@ -1479,6 +1502,7 @@ function handleCotizacionesList_(params) {
     });
 
     return Object.assign({}, cab, {
+      cotizacion_id: cleanCotId,
       precios_incluyen_iva: cab.precios_incluyen_iva === true || String(cab.precios_incluyen_iva).toUpperCase() === 'SI',
       items_marcados: Number(cab.items_marcados || lines.filter(function(l) { return l.incluir; }).length),
       subtotal_neto: Number(cab.subtotal_neto || 0),
@@ -1549,8 +1573,8 @@ function handleCotizacionesCreate_(params, user, requestId) {
   cabecera.taller_destino = validarTallerCanonico_(cabecera.taller_destino || 'Santa Ana');
 
   const yearSuffix = Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yy');
-  const nextNum = nextCorrelative_('COT_' + yearSuffix, 'COT-' + yearSuffix + '-', 3);
-  const cot_id = nextNum;
+  const nextNum = nextCorrelative_('COT_' + yearSuffix, 'COT-' + yearSuffix, 3);
+  const cot_id = (typeof nextNum === 'object' && nextNum.formatted) ? nextNum.formatted : String(nextNum);
 
   // Insertar cabecera
   const cabPayload = {

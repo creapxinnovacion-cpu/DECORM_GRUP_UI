@@ -74,6 +74,9 @@ export function CotizacionesView({ onNavigateCompras }) {
   const [formLineas, setFormLineas] = useState([]);
   const [filterTipoItem, setFilterTipoItem] = useState('TODOS'); // 'TODOS' | 'MATERIAL' | 'INSUMO' | 'EQUIPO'
   const [busquedaLinea, setBusquedaLinea] = useState('');
+  const [busquedaCatalogoModal, setBusquedaCatalogoModal] = useState('');
+  const [categoriaModal, setCategoriaModal] = useState('TODAS');
+  const [loadingCatalogo, setLoadingCatalogo] = useState(false);
 
   // Refs para exportar PDF
   const pdfFinanzasRef = useRef(null);
@@ -266,10 +269,30 @@ export function CotizacionesView({ onNavigateCompras }) {
     ) || preciosProveedor.find((p) => p.sku === catItem.sku);
 
     let tipo = 'INSUMO';
-    if (catItem.sku.startsWith('MET') || catItem.sku.startsWith('VID') || catItem.sku.startsWith('LIV')) {
+    const gg = String(catItem.grupo_gasto || '').toLowerCase();
+    const cat = String(catItem.categoria || '').toLowerCase();
+    const sku = String(catItem.sku || '').toUpperCase();
+
+    if (
+      gg.includes('materia') ||
+      gg.includes('material') ||
+      cat.includes('metal') ||
+      cat.includes('vidrio') ||
+      cat.includes('liviana') ||
+      sku.startsWith('MET') ||
+      sku.startsWith('VID') ||
+      sku.startsWith('LIV')
+    ) {
       tipo = 'MATERIAL';
-    } else if (catItem.sku.startsWith('EQU')) {
+    } else if (
+      gg.includes('equipo') ||
+      cat.includes('equipo') ||
+      cat.includes('herramienta') ||
+      sku.startsWith('EQU')
+    ) {
       tipo = 'EQUIPO';
+    } else {
+      tipo = 'INSUMO';
     }
 
     const nuevaLinea = {
@@ -280,7 +303,7 @@ export function CotizacionesView({ onNavigateCompras }) {
       descripcion: catItem.descripcion,
       unidad: catItem.unidad || 'unidad',
       cantidad: Math.max(1, Math.ceil((Number(catItem.stock_minimo) || 5) * FACTOR_PEDIDO_DEFAULT - (Number(catItem.stock_actual) || 0))),
-      precio_unitario: matchPrecio?.ultimo_precio || Number(catItem.precio_referencial_neto) || 0,
+      precio_unitario: matchPrecio?.ultimo_precio || Number(catItem.precio_referencial_neto) || Number(catItem.precio_ref_neto) || 0,
       incluye_iva: formCabecera.precios_incluyen_iva,
       taller_linea: formCabecera.taller_destino,
     };
@@ -598,7 +621,11 @@ export function CotizacionesView({ onNavigateCompras }) {
                 <div className="space-y-1.5 flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono font-black text-amber-400 text-base">
-                      {cot.cotizacion_id}
+                      {typeof cot.cotizacion_id === 'object'
+                        ? (cot.cotizacion_id?.formatted || cot.uid || 'COT-???')
+                        : (String(cot.cotizacion_id).includes('object Object')
+                          ? (cot.uid || 'COT-???')
+                          : (cot.cotizacion_id || cot.uid || 'COT-???'))}
                     </span>
 
                     {/* Badge de Estado */}
@@ -908,11 +935,15 @@ export function CotizacionesView({ onNavigateCompras }) {
                     Desmarcar
                   </button>
                   <button
-                    onClick={() => setShowAddItemModal(true)}
+                    onClick={() => {
+                      setBusquedaCatalogoModal('');
+                      setCategoriaModal('TODAS');
+                      setShowAddItemModal(true);
+                    }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-bold cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    + Agregar del Catálogo
+                    Agregar del Catálogo
                   </button>
                 </div>
               </div>
@@ -1200,54 +1231,172 @@ export function CotizacionesView({ onNavigateCompras }) {
               </button>
             </div>
 
-            <div className="p-3 border-b border-slate-800 bg-slate-950">
-              <input
-                type="text"
-                placeholder="Buscar por SKU o descripción..."
-                onChange={(e) => setBusquedaLinea(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none"
-              />
+            <div className="p-3 border-b border-slate-800 bg-slate-950 space-y-2">
+              <div className="relative">
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Buscar por SKU, descripción o palabra clave (ej. lija, thinner, tubo)..."
+                  value={busquedaCatalogoModal}
+                  onChange={(e) => setBusquedaCatalogoModal(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                />
+                <Package className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                {busquedaCatalogoModal && (
+                  <button
+                    onClick={() => setBusquedaCatalogoModal('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Chips Rápidos de Categoría */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-[11px]">
+                {[
+                  'TODAS',
+                  'Abrasivos',
+                  'Consumibles y EPP',
+                  'Selladores y adhesivos',
+                  'Metal y estructura',
+                  'Vidrio',
+                  'Herrajes y accesorios',
+                  'Equipos y herramientas',
+                  'Pintura y recubrimientos',
+                  'Construcción liviana',
+                ].map((catName) => {
+                  const isSel = categoriaModal === catName;
+                  return (
+                    <button
+                      key={catName}
+                      type="button"
+                      onClick={() => setCategoriaModal(catName)}
+                      className={`px-2.5 py-1 rounded-lg font-medium whitespace-nowrap transition cursor-pointer ${
+                        isSel
+                          ? 'bg-amber-500 text-slate-950 font-bold'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      }`}
+                    >
+                      {catName}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="overflow-y-auto p-3 space-y-2 flex-1">
-              {catalogo
-                .filter((c) => {
-                  const s = busquedaLinea.toLowerCase();
-                  return (
-                    !s ||
-                    (c.sku || '').toLowerCase().includes(s) ||
-                    (c.descripcion || '').toLowerCase().includes(s)
-                  );
-                })
-                .slice(0, 30)
-                .map((item) => (
-                  <div
-                    key={item.sku}
-                    className="p-2.5 rounded-xl bg-slate-950/50 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between gap-3 transition-colors cursor-pointer"
-                    onClick={() => handleAgregarItemCatalogo(item)}
+            <div className="overflow-y-auto p-3 space-y-2 flex-1 min-h-[300px]">
+              {catalogo.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-3">
+                  <Package className="w-8 h-8 text-amber-500/50 animate-pulse" />
+                  <p>El catálogo maestro no tiene artículos cargados aún o está sincronizando.</p>
+                  <button
+                    type="button"
+                    disabled={loadingCatalogo}
+                    onClick={async () => {
+                      setLoadingCatalogo(true);
+                      try {
+                        const res = await api.getCatalogo({ pageSize: 500 });
+                        setCatalogo(res.rows || []);
+                      } catch (err) {
+                        console.error('Error cargando catalogo:', err);
+                      } finally {
+                        setLoadingCatalogo(false);
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg transition"
                   >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-amber-400 text-xs">
-                          {item.sku}
-                        </span>
-                        <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">
-                          {item.categoria}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-200 mt-0.5">{item.descripcion}</p>
-                    </div>
+                    {loadingCatalogo ? 'Cargando Catálogo...' : 'Recargar Catálogo Maestro'}
+                  </button>
+                </div>
+              ) : (() => {
+                const s = busquedaCatalogoModal.trim().toLowerCase();
+                const filtrados = catalogo
+                  .filter((c) => {
+                    const matchCat =
+                      categoriaModal === 'TODAS' ||
+                      String(c.categoria || '').toLowerCase() === categoriaModal.toLowerCase();
+                    const matchText =
+                      !s ||
+                      (c.sku || '').toLowerCase().includes(s) ||
+                      (c.descripcion || '').toLowerCase().includes(s) ||
+                      (c.categoria || '').toLowerCase().includes(s) ||
+                      (c.sku_anterior || '').toLowerCase().includes(s);
+                    return matchCat && matchText;
+                  })
+                  .slice(0, 60);
 
-                    <div className="text-right shrink-0">
-                      <div className="text-[11px] text-slate-400">
-                        Stock: <strong>{item.stock_actual ?? 0}</strong> {item.unidad}
-                      </div>
-                      <button className="text-xs font-bold text-amber-400 hover:text-amber-300 mt-1">
-                        + Seleccionar
-                      </button>
+                if (filtrados.length === 0) {
+                  return (
+                    <div className="p-8 text-center text-slate-500 text-xs">
+                      No se encontraron artículos con el filtro actual &quot;{busquedaCatalogoModal}&quot;.
                     </div>
-                  </div>
-                ))}
+                  );
+                }
+
+                return filtrados.map((item) => {
+                  const sku = String(item.sku || '').toUpperCase();
+                  const cat = String(item.categoria || '').toLowerCase();
+                  let tipoBadge = 'INSUMO';
+                  let tipoColor = 'text-amber-400 bg-amber-500/10 border-amber-500/20';
+
+                  if (
+                    cat.includes('metal') ||
+                    cat.includes('vidrio') ||
+                    cat.includes('liviana') ||
+                    sku.startsWith('MET') ||
+                    sku.startsWith('VID') ||
+                    sku.startsWith('LIV')
+                  ) {
+                    tipoBadge = 'MATERIAL';
+                    tipoColor = 'text-sky-400 bg-sky-500/10 border-sky-500/20';
+                  } else if (
+                    cat.includes('equipo') ||
+                    cat.includes('herramienta') ||
+                    sku.startsWith('EQU')
+                  ) {
+                    tipoBadge = 'EQUIPO';
+                    tipoColor = 'text-purple-400 bg-purple-500/10 border-purple-500/20';
+                  }
+
+                  return (
+                    <div
+                      key={item.sku}
+                      className="p-2.5 rounded-xl bg-slate-950/50 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between gap-3 transition-colors cursor-pointer group"
+                      onClick={() => handleAgregarItemCatalogo(item)}
+                    >
+                      <div className="overflow-hidden">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-amber-400 text-xs">
+                            {item.sku}
+                          </span>
+                          <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">
+                            {item.categoria}
+                          </span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${tipoColor}`}>
+                            {tipoBadge}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-200 mt-0.5 truncate group-hover:text-white">
+                          {item.descripcion}
+                        </p>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <div className="text-[11px] text-slate-400">
+                          Stock: <strong>{item.stock_actual ?? 0}</strong> {item.unidad || 'und'}
+                        </div>
+                        <button
+                          type="button"
+                          className="text-xs font-bold text-amber-400 hover:text-amber-300 mt-1"
+                        >
+                          + Seleccionar
+                        </button>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
             </div>
           </div>
         </div>
