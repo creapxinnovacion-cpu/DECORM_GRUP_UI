@@ -1,5 +1,5 @@
 class ApiConfig {
   static const String baseUrl =
-      'https://script.google.com/macros/s/AKfycbzGraoRcFGLcR4PEVXAJLH16xM_vI5G1YxhDZaRAmiu0DIhCqrIPOj_Rr2xbhs-obDE/exec';
+      'https://script.google.com/macros/s/AKfycbzaDMBt4CKZ_cqgIsiiNptopHSNniPxJEOQy8Q2BCcvJKPFbFjMc5Ott1cY3O2milKp1g/exec';
   static const Duration timeout = Duration(seconds: 25);
 }
