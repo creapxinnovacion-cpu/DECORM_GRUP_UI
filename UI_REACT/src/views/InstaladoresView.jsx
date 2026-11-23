@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Truck,
   Plus,
@@ -10,6 +10,9 @@ import {
   Trash2,
   RefreshCw,
   User,
+  Users,
+  FileText,
+  Download,
   Package,
   CheckCircle2,
   Sparkles,
@@ -19,6 +22,7 @@ import {
 import { api, generateRequestId } from '../services/api';
 import { Modal } from '../components/Modal';
 import SearchableSkuSelect from '../components/SearchableSkuSelect';
+import ConsolidadoOperadorModal from '../components/ConsolidadoOperadorModal';
 import { OPERADORES } from '../config/constants';
 
 // Insumos frecuentes para selección en 1 solo clic
@@ -56,6 +60,11 @@ export function InstaladoresView() {
   const [editingItem, setEditingItem] = useState(null);
   const [editFormData, setEditFormData] = useState({});
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // Estados de Reportes y Filtro por Operador
+  const [showReporteModal, setShowReporteModal] = useState(false);
+  const [reporteOperadorInicial, setReporteOperadorInicial] = useState('TODOS');
+  const [filtroOperador, setFiltroOperador] = useState('TODOS');
 
   // Carga inicial
   const fetchItems = async () => {
@@ -300,17 +309,53 @@ export function InstaladoresView() {
     setItems((prev) => prev.filter((it) => it._rowNumber !== rowNumber));
   };
 
+  // Adaptador de ítems a movimientos para el generador de reportes
+  const itemsAsMovimientos = useMemo(() => {
+    return items.map((it, idx) => ({
+      id: it._rowNumber || idx,
+      fecha: it.fecha || new Date().toISOString().split('T')[0],
+      tipo: 'Salida',
+      sku: it.codigo || it.sku || 'S/SKU',
+      descripcion: it.insumo || it.descripcion || '',
+      cantidad: Number(it.cantidad || 0),
+      entregado_a: it.encargado_instalacion || 'Instalador',
+      taller_destino: it.taller || 'Instaladores',
+      observaciones: `Lote: ${it.lote_id || '-'} | Bodega: ${it.encargado_bodega || '-'}`,
+    }));
+  }, [items]);
+
+  // Manejadores para abrir los dos tipos de reportes
+  const handleAbrirReporteGeneral = () => {
+    setReporteOperadorInicial('TODOS');
+    setShowReporteModal(true);
+  };
+
+  const handleAbrirReporteEspecifico = () => {
+    const op =
+      filtroOperador !== 'TODOS'
+        ? filtroOperador
+        : items[0]?.encargado_instalacion || OPERADORES[0] || 'Ayala';
+    setReporteOperadorInicial(op);
+    setShowReporteModal(true);
+  };
+
   // Filter items
-  const filtered = items.filter((it) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      (it.codigo || '').toLowerCase().includes(q) ||
-      (it.insumo || '').toLowerCase().includes(q) ||
-      (it.encargado_instalacion || '').toLowerCase().includes(q) ||
-      (it.encargado_bodega || '').toLowerCase().includes(q)
-    );
-  });
+  const filtered = useMemo(() => {
+    return items.filter((it) => {
+      if (filtroOperador !== 'TODOS') {
+        const opName = String(it.encargado_instalacion || '').toLowerCase();
+        if (!opName.includes(filtroOperador.toLowerCase())) return false;
+      }
+      if (!search) return true;
+      const q = search.toLowerCase();
+      return (
+        (it.codigo || '').toLowerCase().includes(q) ||
+        (it.insumo || '').toLowerCase().includes(q) ||
+        (it.encargado_instalacion || '').toLowerCase().includes(q) ||
+        (it.encargado_bodega || '').toLowerCase().includes(q)
+      );
+    });
+  }, [items, filtroOperador, search]);
 
   return (
     <div className="space-y-6">
@@ -331,19 +376,41 @@ export function InstaladoresView() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Botón 1: Reporte General */}
+          <button
+            type="button"
+            onClick={handleAbrirReporteGeneral}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-500/30 hover:border-emerald-500/50 font-bold text-xs rounded-xl shadow-sm transition cursor-pointer min-h-[40px]"
+            title="Exportar Consolidado General de Todos los Instaladores"
+          >
+            <Users className="w-4 h-4 text-emerald-400" />
+            <span>Reporte General</span>
+          </button>
+
+          {/* Botón 2: Reporte Específico */}
+          <button
+            type="button"
+            onClick={handleAbrirReporteEspecifico}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-sky-400 border border-sky-500/30 hover:border-sky-500/50 font-bold text-xs rounded-xl shadow-sm transition cursor-pointer min-h-[40px]"
+            title="Exportar Comprobante / Reporte Específico del Instalador"
+          >
+            <FileText className="w-4 h-4 text-sky-400" />
+            <span>Reporte Específico</span>
+          </button>
+
           <button
             onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition cursor-pointer min-h-[40px]"
           >
             <Plus className="w-4 h-4" />
-            <span>Registrar Entrega de Insumos</span>
+            <span>Registrar Entrega</span>
           </button>
 
           <button
             onClick={fetchItems}
             disabled={loading}
-            className="p-2 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-800 transition cursor-pointer"
+            className="p-2 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-800 transition cursor-pointer min-h-[40px] min-w-[40px] flex items-center justify-center"
             title="Refrescar lista"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-amber-400' : ''}`} />
@@ -351,8 +418,8 @@ export function InstaladoresView() {
         </div>
       </div>
 
-      {/* Search Bar */}
-      <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-2xl flex items-center gap-3 text-xs">
+      {/* Search Bar & Filtros */}
+      <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-2xl flex flex-col sm:flex-row items-stretch sm:items-center gap-3 text-xs">
         <div className="relative flex-1">
           <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
           <input
@@ -360,10 +427,25 @@ export function InstaladoresView() {
             placeholder="Buscar por código, material o encargado de instalación..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-amber-500 min-h-[38px]"
           />
         </div>
-        <span className="text-slate-500 font-mono text-[11px] pr-2">
+
+        {/* Selector de Instalador */}
+        <select
+          value={filtroOperador}
+          onChange={(e) => setFiltroOperador(e.target.value)}
+          className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500 min-h-[38px]"
+        >
+          <option value="TODOS">Todos los Instaladores</option>
+          {OPERADORES.map((op) => (
+            <option key={op} value={op}>
+              {op}
+            </option>
+          ))}
+        </select>
+
+        <span className="text-slate-500 font-mono text-[11px] px-1 shrink-0">
           {filtered.length} {filtered.length === 1 ? 'registro' : 'registros'}
         </span>
       </div>
@@ -804,6 +886,15 @@ export function InstaladoresView() {
           </div>
         </form>
       </Modal>
+
+      {/* Modal de Exportación: Reporte General y Específico */}
+      <ConsolidadoOperadorModal
+        isOpen={showReporteModal}
+        onClose={() => setShowReporteModal(false)}
+        movimientos={itemsAsMovimientos}
+        catalogoItems={catalogoItems}
+        initialOperador={reporteOperadorInicial}
+      />
     </div>
   );
 }
