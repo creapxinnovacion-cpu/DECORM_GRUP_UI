@@ -56,6 +56,7 @@ export function CotizacionesView({ onNavigateCompras }) {
   // Modales
   const [showEditorModal, setShowEditorModal] = useState(false);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
+  const [showItemLibreModal, setShowItemLibreModal] = useState(false);
   const [showPdfFinanzasModal, setShowPdfFinanzasModal] = useState(false);
   const [showPdfProveedorModal, setShowPdfProveedorModal] = useState(false);
   const [activeCotizacion, setActiveCotizacion] = useState(null);
@@ -77,6 +78,18 @@ export function CotizacionesView({ onNavigateCompras }) {
   const [busquedaCatalogoModal, setBusquedaCatalogoModal] = useState('');
   const [categoriaModal, setCategoriaModal] = useState('TODAS');
   const [loadingCatalogo, setLoadingCatalogo] = useState(false);
+
+  // Estado para ítem libre / fuera de catálogo
+  const [formItemLibre, setFormItemLibre] = useState({
+    tipo_item: 'MATERIAL',
+    sku: '',
+    codigo_proveedor: '',
+    descripcion: '',
+    unidad: 'unidad',
+    cantidad: 1,
+    precio_unitario: 0,
+    taller_linea: 'Sonsonate',
+  });
 
   // Refs para exportar PDF
   const pdfFinanzasRef = useRef(null);
@@ -312,6 +325,41 @@ export function CotizacionesView({ onNavigateCompras }) {
 
     setFormLineas((prev) => [...prev, nuevaLinea]);
     setShowAddItemModal(false);
+  };
+
+  // Agregar ítem libre / fuera de catálogo
+  const handleAgregarItemLibre = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!formItemLibre.descripcion.trim()) {
+      alert('La descripción del artículo o material es obligatoria.');
+      return;
+    }
+    const cant = Number(formItemLibre.cantidad) || 1;
+    if (cant <= 0) {
+      alert('La cantidad a cotizar debe ser mayor a 0.');
+      return;
+    }
+
+    const customSku = formItemLibre.sku.trim()
+      ? formItemLibre.sku.trim().toUpperCase()
+      : `EXT-${Date.now().toString().slice(-4)}`;
+
+    const nuevaLinea = {
+      incluir: true,
+      tipo_item: formItemLibre.tipo_item || 'MATERIAL',
+      sku: customSku,
+      codigo_proveedor: formItemLibre.codigo_proveedor.trim(),
+      descripcion: formItemLibre.descripcion.trim(),
+      unidad: formItemLibre.unidad.trim() || 'unidad',
+      cantidad: cant,
+      precio_unitario: Number(formItemLibre.precio_unitario) || 0,
+      incluye_iva: formCabecera.precios_incluyen_iva,
+      taller_linea: formItemLibre.taller_linea || formCabecera.taller_destino,
+      es_fuera_catalogo: true,
+    };
+
+    setFormLineas((prev) => [...prev, nuevaLinea]);
+    setShowItemLibreModal(false);
   };
 
   // Guardar cotización (Crear o Actualizar)
@@ -964,6 +1012,26 @@ export function CotizacionesView({ onNavigateCompras }) {
                     <Plus className="w-3.5 h-3.5" />
                     Agregar del Catálogo
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormItemLibre({
+                        tipo_item: 'MATERIAL',
+                        sku: '',
+                        codigo_proveedor: '',
+                        descripcion: '',
+                        unidad: 'unidad',
+                        cantidad: 1,
+                        precio_unitario: 0,
+                        taller_linea: formCabecera.taller_destino || 'Sonsonate',
+                      });
+                      setShowItemLibreModal(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 text-xs font-bold cursor-pointer transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    + Ítem Fuera de Catálogo
+                  </button>
                 </div>
               </div>
 
@@ -1040,7 +1108,14 @@ export function CotizacionesView({ onNavigateCompras }) {
 
                             {/* SKU */}
                             <td className="py-2 px-3 font-mono font-bold text-amber-400">
-                              {linea.sku}
+                              <div className="flex items-center gap-1.5">
+                                <span>{linea.sku}</span>
+                                {linea.es_fuera_catalogo && (
+                                  <span className="text-[9px] font-sans font-bold px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                                    Extra
+                                  </span>
+                                )}
+                              </div>
                             </td>
 
                             {/* Código Proveedor */}
@@ -1061,8 +1136,22 @@ export function CotizacionesView({ onNavigateCompras }) {
                             </td>
 
                             {/* Descripción */}
-                            <td className="py-2 px-3 text-slate-200 font-medium max-w-xs truncate">
-                              {linea.descripcion}
+                            <td className="py-2 px-3 text-slate-200 font-medium max-w-xs">
+                              {linea.es_fuera_catalogo ? (
+                                <input
+                                  type="text"
+                                  value={linea.descripcion || ''}
+                                  onChange={(e) =>
+                                    handleUpdateLinea(originalIndex, 'descripcion', e.target.value)
+                                  }
+                                  placeholder="Descripción del ítem..."
+                                  className="w-full bg-slate-950 border border-sky-500/40 rounded-lg px-2 py-1 text-xs text-slate-100 focus:outline-none focus:border-sky-400"
+                                />
+                              ) : (
+                                <span className="truncate block" title={linea.descripcion}>
+                                  {linea.descripcion}
+                                </span>
+                              )}
                             </td>
 
                             {/* Unidad */}
@@ -1417,6 +1506,183 @@ export function CotizacionesView({ onNavigateCompras }) {
                 });
               })()}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* 5.1 MODAL DE ÍTEM LIBRE / FUERA DE CATÁLOGO              */}
+      {/* ======================================================== */}
+      {showItemLibreModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-60 flex items-center justify-center p-3 sm:p-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-sky-500/20 border border-sky-500/30 flex items-center justify-center text-sky-400">
+                  <Plus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-100">
+                    Agregar Ítem Fuera de Catálogo
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    Materiales especiales o insumos no registrados en el catálogo
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowItemLibreModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAgregarItemLibre} className="p-4 space-y-3.5 text-xs">
+              {/* Tipo de Ítem */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  Tipo de Ítem
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'MATERIAL', label: 'Material' },
+                    { id: 'INSUMO', label: 'Insumo' },
+                    { id: 'EQUIPO', label: 'Equipo' },
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setFormItemLibre({ ...formItemLibre, tipo_item: t.id })}
+                      className={`py-2 px-3 rounded-xl font-bold text-xs border cursor-pointer transition ${
+                        formItemLibre.tipo_item === t.id
+                          ? 'bg-sky-500/20 border-sky-500/50 text-sky-300'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Descripción */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  Descripción del Artículo o Material <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="Ej: Vidrio templado 10mm canto pulido 2.10x0.90m..."
+                  value={formItemLibre.descripcion}
+                  onChange={(e) => setFormItemLibre({ ...formItemLibre, descripcion: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-400 min-h-[40px]"
+                />
+              </div>
+
+              {/* SKU Provisorio & Código Proveedor */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    SKU Provisorio <span className="text-slate-500 font-normal">(Opcional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: EXT-VIDRIO o vacío (auto)"
+                    value={formItemLibre.sku}
+                    onChange={(e) => setFormItemLibre({ ...formItemLibre, sku: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-amber-400 font-mono placeholder-slate-600 focus:outline-none focus:border-sky-400 min-h-[40px]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Cód. Proveedor <span className="text-slate-500 font-normal">(Opcional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: REF-99482"
+                    value={formItemLibre.codigo_proveedor}
+                    onChange={(e) => setFormItemLibre({ ...formItemLibre, codigo_proveedor: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-sky-400 min-h-[40px]"
+                  />
+                </div>
+              </div>
+
+              {/* Unidad, Cantidad & Precio Unitario */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Unidad
+                  </label>
+                  <select
+                    value={formItemLibre.unidad}
+                    onChange={(e) => setFormItemLibre({ ...formItemLibre, unidad: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-sky-400 min-h-[40px]"
+                  >
+                    <option value="unidad">unidad</option>
+                    <option value="pliego">pliego</option>
+                    <option value="metro">metro</option>
+                    <option value="m2">m2</option>
+                    <option value="tubo">tubo</option>
+                    <option value="lámina">lámina</option>
+                    <option value="galón">galón</option>
+                    <option value="libra">libra</option>
+                    <option value="rollo">rollo</option>
+                    <option value="caja">caja</option>
+                    <option value="juego">juego</option>
+                    <option value="par">par</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Cantidad <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    required
+                    value={formItemLibre.cantidad}
+                    onChange={(e) => setFormItemLibre({ ...formItemLibre, cantidad: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 font-bold focus:outline-none focus:border-sky-400 min-h-[40px]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Precio Unit. $
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formItemLibre.precio_unitario}
+                    onChange={(e) => setFormItemLibre({ ...formItemLibre, precio_unitario: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-emerald-400 font-bold focus:outline-none focus:border-sky-400 min-h-[40px]"
+                  />
+                </div>
+              </div>
+
+              {/* Botones de Acción */}
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowItemLibreModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs min-h-[40px] cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-bold text-xs shadow-md shadow-sky-950/40 min-h-[40px] cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  Agregar a la Cotización
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

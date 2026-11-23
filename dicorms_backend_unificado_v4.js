@@ -390,15 +390,22 @@ const SCHEMA = {
     sheet: 'InsumosInstaladores',
     headerRow: 1,
     firstRow: 2,
-    pk: 'codigo',
-    slotCols: ['Codigo', 'Insumo'],
+    pk: 'uid',
+    slotCols: ['Lote ID', 'Código SKU'],
     inputs: {
-      codigo: 'Codigo',
-      insumo: 'Insumo',
+      fecha: 'Fecha',
+      lote_id: 'Lote ID',
+      sku: 'Código SKU',
+      codigo: 'Código SKU',
+      insumo: 'Insumo [Auto]',
       check: 'Check',
       cantidad: 'Cantidad',
-      encargado_instalacion: 'Encargado de Instlacion',
-      encargado_bodega: 'Encargado de bodega',
+      taller: 'Taller',
+      encargado_instalacion: 'Encargado Instalación',
+      encargado_bodega: 'Encargado Bodega',
+      mov_uid: 'mov_uid',
+      uid: 'uid',
+      updated_at: 'updated_at',
     },
     computed: {},
     types: {
@@ -1090,7 +1097,8 @@ function handleInstaladoresBatch_(params, user, requestId) {
 
   // R-32: Rechazar si incluye equipos EQU-* (deben ir a Préstamos)
   lineas.forEach(function(lin) {
-    if (lin.sku && lin.sku.indexOf('EQU-') === 0) {
+    const itemSku = lin.sku || lin.codigo;
+    if (itemSku && itemSku.indexOf('EQU-') === 0) {
       throw appError_('VALIDATION', 'Los equipos y herramientas (EQU-*) deben registrarse en Préstamos, no en Insumos.');
     }
   });
@@ -1099,23 +1107,25 @@ function handleInstaladoresBatch_(params, user, requestId) {
   const fechaHoy = Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd');
   const tallerDestino = 'Instaladores';
   const instaladorNombre = cabecera.encargado_instalacion || cabecera.instalador || 'Instaladores';
+  const bodegaNombre = cabecera.encargado_bodega || (user ? user.username : 'Bodega Central');
 
   const results = [];
   lineas.forEach(function(lin, idx) {
     const cant = Math.abs(Number(lin.cantidad || 0));
     const subReqId = requestId ? requestId + '_' + idx : null;
+    const itemSku = lin.sku || lin.codigo || '';
 
     // 1. Descuento atómico en MOVIMIENTOSInsumosOperativo (R-32)
     let movUid = 'MOV-' + Utilities.getUuid().substring(0, 8);
-    if (cant > 0 && lin.sku) {
+    if (cant > 0 && itemSku && itemSku !== 'S/SKU') {
       const movPayload = {
         fecha: fechaHoy,
         tipo: 'Salida',
-        sku: lin.sku,
+        sku: itemSku,
         cantidad: -cant,
         taller_destino: tallerDestino,
         entregado_a: instaladorNombre,
-        observaciones: 'Despacho instalador lote ' + loteId + (lin.observaciones ? ' | ' + lin.observaciones : ''),
+        observaciones: 'Despacho instalador lote ' + loteId + (lin.insumo ? ' | ' + lin.insumo : ''),
         ref_tipo: 'INSTALADOR',
         ref_id: loteId,
         lote_id: loteId,
@@ -1125,17 +1135,21 @@ function handleInstaladoresBatch_(params, user, requestId) {
       createRow_('movimientos', movPayload, user, subReqId ? subReqId + '_mov' : null);
     }
 
-    // 2. Registro en InsumosInstaladores
+    // 2. Registro persistente en InsumosInstaladores
     const payload = {
       fecha: fechaHoy,
-      instalador: instaladorNombre,
-      sku: lin.sku,
-      descripcion: lin.insumo || lin.descripcion || '',
-      cantidad: cant,
-      unidad: lin.unidad || 'unidad',
-      taller: tallerDestino,
       lote_id: loteId,
+      sku: itemSku,
+      codigo: itemSku,
+      insumo: lin.insumo || lin.descripcion || itemSku,
+      check: lin.check === true || lin.check === 'SI' || lin.check === 'true' ? 'SI' : 'NO',
+      cantidad: cant,
+      taller: tallerDestino,
+      encargado_instalacion: instaladorNombre,
+      encargado_bodega: bodegaNombre,
       mov_uid: movUid,
+      uid: 'INS-' + Utilities.getUuid().substring(0, 8),
+      updated_at: Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
     };
     results.push(createRow_('insumos_instaladores', payload, user, subReqId));
   });

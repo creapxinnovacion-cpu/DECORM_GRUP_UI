@@ -195,18 +195,24 @@ export function InstaladoresView() {
     try {
       let registeredRemotely = false;
 
-      // 1. Intentar registrar vía instaladores.createBatch o individual
+      // 1. Intentar registrar vía instaladores.createBatch (escribe en InsumosInstaladores y descuenta en MOVIMIENTOS)
       try {
         await api.createInsumosInstaladoresBatch(
           {
             encargado_instalacion: encargadoInstalacion,
             encargado_bodega: encargadoBodega,
           },
-          processedLineas
+          processedLineas.map((l) => ({
+            sku: l.codigo,
+            codigo: l.codigo,
+            insumo: l.insumo,
+            cantidad: l.cantidad,
+            check: l.check,
+          }))
         );
         registeredRemotely = true;
       } catch (batchErr) {
-        console.warn('Fallo createBatch en instaladores, intentando registro individual o en movimientos:', batchErr);
+        console.warn('Fallo createBatch en instaladores, intentando registro en movimientos:', batchErr);
       }
 
       // 2. Si no fue por createBatch, asentar las salidas en MOVIMIENTOS de inmediato para descontar stock en Google Sheets
