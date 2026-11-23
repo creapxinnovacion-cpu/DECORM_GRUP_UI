@@ -67,14 +67,16 @@ def test_conciliacion_structure():
     sh = wb['Conciliacion']
     h3 = [sh.cell(3, c).value for c in range(1, sh.max_column+1) if sh.cell(3, c).value]
     assert any('SKU' in str(x) for x in h3), f"Headers de Conciliacion deben estar en Fila 3, se encontró: {h3}"
-    # Check rows
+    # Check rows (either cached value or formula reference like =Catalogo!A4)
+    wb_form = openpyxl.load_workbook('DECORM_GROUP_v4.xlsx', data_only=False)
+    sh_form = wb_form['Conciliacion']
     rows_data = []
     for r in range(4, sh.max_row+1):
-        sku = sh.cell(r, 1).value
+        sku = sh.cell(r, 1).value or sh_form.cell(r, 1).value
         if sku and str(sku).strip():
             rows_data.append(sku)
     assert len(rows_data) > 0, "No hay filas en Conciliacion"
-    return f"Fila 3 es header. Total filas conciliadas: {len(rows_data)}"
+    return f"Fila 3 es header. Total filas vinculadas/conciliadas: {len(rows_data)}"
 
 # TEST 5: Sheet Inicio & Dashboard KPIs / Alerts
 def test_dashboard_inicio():

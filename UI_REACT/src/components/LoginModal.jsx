@@ -95,6 +95,15 @@ export function LoginModal({ isOpen, onClose }) {
             )}
           </button>
         </form>
+
+        <div className="p-2.5 bg-slate-900/80 border border-slate-800 rounded-xl text-[11px] text-slate-400 space-y-1">
+          <p className="flex items-center gap-1.5 text-amber-400 font-semibold">
+            <KeyRound className="w-3.5 h-3.5" /> Clave inicial del sistema:
+          </p>
+          <p>
+            El PIN inicial por defecto es <span className="font-mono text-amber-300 font-bold">123456</span> para el usuario <span className="font-mono text-slate-200 font-bold">cristian</span>. Una vez iniciada sesión, Cristian Cajul puede actualizar contraseñas en cualquier momento con el icono 🔑.
+          </p>
+        </div>
       </div>
     </Modal>
   );

@@ -17,7 +17,7 @@
   {
     "test": "4. Estructura y Encabezados de Conciliación",
     "status": "PASS",
-    "details": "Fila 3 es header. Total filas conciliadas: 130"
+    "details": "Fila 3 es header. Total filas vinculadas/conciliadas: 130"
   },
   {
     "test": "5. Tablero de Control Operativo e Inicio (KPIs y Alertas)",

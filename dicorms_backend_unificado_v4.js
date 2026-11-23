@@ -1166,6 +1166,23 @@ function createPrestamo_(payload, user, requestId) {
     throw appError_('VALIDATION', 'La cantidad prestada debe ser mayor a 0.');
   }
   payload.cant_devuelta = Number(payload.cant_devuelta || 0);
+
+  // R-32 & R-43 (SDD-009): Bloqueo estricto de nuevos préstamos a quienes tienen herramientas vencidas
+  const persona = String(payload.persona || '').trim().toLowerCase();
+  if (persona) {
+    const todosPrestamos = listEntity_('prestamos', { pageSize: 500 }).rows;
+    const tieneVencidos = todosPrestamos.some(function(p) {
+      const pPersona = String(p.persona || '').trim().toLowerCase();
+      const cantPend = (Number(p.cant_prestada) || 0) - (Number(p.cant_devuelta) || 0);
+      const estado = String(p.estado || '').toUpperCase();
+      return pPersona === persona && cantPend > 0 && (estado === 'VENCIDO' || estado === 'MORA' || estado.indexOf('VENCID') !== -1);
+    });
+
+    if (tieneVencidos && !payload.autorizacion_gerencia) {
+      throw appError_('FORBIDDEN', 'R-32: ' + payload.persona + ' tiene herramientas con plazo vencido pendientes de devolución (PR-*). Nuevos préstamos bloqueados hasta finiquitar saldo o autorización expresa de Gerencia.');
+    }
+  }
+
   return createRow_('prestamos', payload, user, requestId);
 }
 
@@ -2020,17 +2037,27 @@ function handleAuthLogin_(params) {
         }
       }
 
-      // 3. Verificación de PIN / Contraseña (Soporta sha256 puro, salt+pin, pin+salt o texto plano)
+      // 3. Verificación de PIN / Contraseña (Soporta sha256 Base64, sha256 Hex, salt+pin, pin+salt o texto plano)
       const storedHash = String(r[colPin] || '').trim();
       const userSalt = colSalt !== -1 ? String(r[colSalt] || '').trim() : '';
 
-      const hashPlain = sha256_(pin);
-      const hashSaltPref = userSalt ? sha256_(userSalt + pin) : '';
-      const hashSaltSuff = userSalt ? sha256_(pin + userSalt) : '';
+      const hashPlainB64 = sha256_(pin);
+      const hashSaltPrefB64 = userSalt ? sha256_(userSalt + pin) : '';
+      const hashSaltSuffB64 = userSalt ? sha256_(pin + userSalt) : '';
 
-      const match = (storedHash === hashPlain) ||
-                    (userSalt && storedHash === hashSaltPref) ||
-                    (userSalt && storedHash === hashSaltSuff) ||
+      // Cálculo de Hex SHA-256 para máxima compatibilidad
+      const digestBytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, pin, Utilities.Charset.UTF_8);
+      let hashPlainHex = '';
+      for (let b = 0; b < digestBytes.length; b++) {
+        const byteVal = (digestBytes[b] < 0) ? digestBytes[b] + 256 : digestBytes[b];
+        const hexByte = byteVal.toString(16);
+        hashPlainHex += (hexByte.length === 1 ? '0' : '') + hexByte;
+      }
+
+      const match = (storedHash === hashPlainB64) ||
+                    (storedHash.toLowerCase() === hashPlainHex.toLowerCase()) ||
+                    (userSalt && storedHash === hashSaltPrefB64) ||
+                    (userSalt && storedHash === hashSaltSuffB64) ||
                     (storedHash === pin);
 
       if (match) {
@@ -2158,10 +2185,23 @@ function cambiarPinUsuario(targetUsername, nuevoPin) {
 }
 
 function verifyTokenAndAuthorize_(token, action) {
+  // Rutas públicas de infraestructura y login inicial
+  const publicActions = ['health', 'config.get', 'auth.login'];
+  if (publicActions.indexOf(action) !== -1) {
+    return { username: 'anonimo', role: 'lectura', taller: 'Todos' };
+  }
+
   if (!token) {
+    // SEGURIDAD CRÍTICA (R-47): NUNCA otorgar rol admin automáticamente sin token de sesión.
+    // Solo permitir lectura básica a usuarios no autenticados; toda mutación o reporte requiere PIN.
     const enforceAuth = PropertiesService.getScriptProperties().getProperty('ENFORCE_AUTH') === 'true';
-    if (!enforceAuth) return { username: 'cristian', role: 'admin', taller: 'Todos' };
-    throw appError_('AUTH', 'Token de sesión requerido.');
+    if (!enforceAuth) {
+      const isReadOnly = action.indexOf('.list') !== -1 || action.indexOf('.get') !== -1 || action === 'catalogo.kardex';
+      if (isReadOnly) {
+        return { username: 'invitado', role: 'lectura', taller: 'Todos' };
+      }
+    }
+    throw appError_('AUTH', 'Acceso denegado: Se requiere autenticación con usuario y PIN válidos (auto-admin deshabilitado por seguridad).');
   }
 
   const parts = String(token).split('.');
@@ -2404,7 +2444,7 @@ let FC_SEQ_COUNTER_ = 0; // Evita colisiones de IDs en ejecuciones rápidas
 // Parámetros globales (editables en la hoja Forecast_Params o desde React)
 const FC_DEFAULT_PARAMS = [
   ['DIAS_MODO', 'OPERATIVO', 'OPERATIVO = lunes a sábado (sin domingos) | CALENDARIO = 7 días'],
-  ['REVISION_DIAS', 7, 'Cobertura operativa semanal (SDD-001)'],
+  ['REVISION_DIAS', 6, 'Cobertura operativa semanal (6 días lun-sáb según SDD-009 R-40)'],
   ['SEGURIDAD_DIAS', 2, 'Protección adicional en días (SDD-001)'],
   ['LEAD_TIME_DEFAULT', 2, 'Días de entrega del proveedor si el SKU no tiene lead_time propio'],
   ['FACTOR_APRENDIZAJE', 0.2, 'Peso de la tasa observada en el EMA (SDD-004). Tasa nueva = ant×(1-f) + obs×f'],
@@ -2945,7 +2985,8 @@ function fcBuildContext_() {
     const unidadesPorModelo = {};
     agenda.forEach(function(a) {
       const est = String(a.estado || '').toLowerCase();
-      if (/entregad|cancel|instalad|terminad/.test(est)) return;
+      // R-16 & R-39 (SDD-009): Puertas "En confirmación" NO generan demanda de materiales
+      if (/entregad|cancel|instalad|terminad|confirmaci[oó]n/.test(est)) return;
       const m = String(a.modelo || '').trim().toUpperCase();
       if (m) unidadesPorModelo[m] = (unidadesPorModelo[m] || 0) + Number(a.unidades || 0);
     });
