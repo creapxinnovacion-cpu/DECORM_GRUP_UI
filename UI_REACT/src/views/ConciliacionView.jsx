@@ -13,6 +13,10 @@ import {
   ArrowRight,
   ClipboardList,
   ShieldCheck,
+  Plus,
+  Download,
+  Users,
+  FileText,
 } from 'lucide-react';
 import { api } from '../services/api';
 import { Badge } from '../components/Badge';
@@ -140,15 +144,63 @@ export function ConciliacionView() {
   };
 
   const filteredItems = items.filter((it) => {
-    const s = search.toLowerCase();
+    const s = search.trim().toLowerCase();
     const matchSearch =
+      !s ||
       (it.sku || '').toLowerCase().includes(s) ||
       (it.descripcion || '').toLowerCase().includes(s) ||
       (it.id_conteo_ins || '').toLowerCase().includes(s);
+    const itemEstado = String(it.estado || '').trim().toUpperCase();
     const matchStatus =
-      statusFilter === 'TODOS' || (it.estado || '').toUpperCase() === statusFilter;
+      statusFilter === 'TODOS' || itemEstado === statusFilter.trim().toUpperCase();
     return matchSearch && matchStatus;
   });
+
+  const handleExportGeneral = () => {
+    const headers = ['SKU', 'Cód. INS', 'Descripción', 'Stock Físico', 'Stock Sistema', 'Diferencia', '% Dif', 'Estado', 'Causa Probable'];
+    const rows = items.map((it) => [
+      `"${it.sku || ''}"`,
+      `"${it.id_conteo_ins || ''}"`,
+      `"${(it.descripcion || '').replace(/"/g, '""')}"`,
+      it.stock_fisico ?? 0,
+      it.stock_sistema ?? 0,
+      it.diferencia ?? 0,
+      `"${it.pct_diferencia ? (Number(it.pct_diferencia) * 100).toFixed(1) + '%' : '0%'}"`,
+      `"${it.estado || 'SIN CONTEO'}"`,
+      `"${(it.causa_probable || '').replace(/"/g, '""')}"`,
+    ]);
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Reporte_General_Conciliacion_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportEspecifico = () => {
+    const headers = ['SKU', 'Cód. INS', 'Descripción', 'Stock Físico', 'Stock Sistema', 'Diferencia', '% Dif', 'Estado', 'Causa Probable'];
+    const rows = filteredItems.map((it) => [
+      `"${it.sku || ''}"`,
+      `"${it.id_conteo_ins || ''}"`,
+      `"${(it.descripcion || '').replace(/"/g, '""')}"`,
+      it.stock_fisico ?? 0,
+      it.stock_sistema ?? 0,
+      it.diferencia ?? 0,
+      `"${it.pct_diferencia ? (Number(it.pct_diferencia) * 100).toFixed(1) + '%' : '0%'}"`,
+      `"${it.estado || 'SIN CONTEO'}"`,
+      `"${(it.causa_probable || '').replace(/"/g, '""')}"`,
+    ]);
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Reporte_Especifico_Conciliacion_${statusFilter}_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   // Resultados de búsqueda en modal para selección de SKU o nombre
   const modalCatalogResults = catalogoList.filter((it) => {
@@ -306,25 +358,59 @@ export function ConciliacionView() {
 
           {/* Table */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
-            <div className="p-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="max-w-md w-full relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Buscar por SKU o descripción..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-100 placeholder-slate-400 focus:outline-hidden"
-                />
+            <div className="p-4 border-b border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1">
+                <div className="max-w-md w-full relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por SKU o descripción..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 placeholder-slate-400 focus:outline-hidden"
+                  />
+                </div>
+                {statusFilter !== 'TODOS' && (
+                  <button
+                    onClick={() => setStatusFilter('TODOS')}
+                    className="text-xs text-amber-400 hover:underline flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                  >
+                    Limpiar filtro ({statusFilter})
+                  </button>
+                )}
               </div>
-              {statusFilter !== 'TODOS' && (
+
+              <div className="flex flex-wrap items-center gap-2">
                 <button
-                  onClick={() => setStatusFilter('TODOS')}
-                  className="text-xs text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  type="button"
+                  onClick={handleExportGeneral}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 text-xs font-bold rounded-xl transition cursor-pointer"
+                  title="Exportar Reporte General de Conciliación en CSV"
                 >
-                  Limpiar filtro de estado ({statusFilter})
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Reporte General</span>
                 </button>
-              )}
+
+                <button
+                  type="button"
+                  onClick={handleExportEspecifico}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-sky-400 border border-sky-500/30 text-xs font-bold rounded-xl transition cursor-pointer"
+                  title="Exportar Reporte Filtrado en CSV"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Reporte Específico</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenConteoModal()}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-emerald-500/20 transition cursor-pointer"
+                  title="Buscar por SKU o Nombre para cargar nuevo Conteo Físico Real"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Cargar Conteo Físico Real</span>
+                </button>
+              </div>
             </div>
 
             <div className="overflow-x-auto">

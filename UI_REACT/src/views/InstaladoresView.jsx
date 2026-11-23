@@ -19,7 +19,7 @@ import {
   X,
   AlertCircle,
 } from 'lucide-react';
-import { api, generateRequestId } from '../services/api';
+import { api, generateRequestId, generateOperationId } from '../services/api';
 import { Modal } from '../components/Modal';
 import SearchableSkuSelect from '../components/SearchableSkuSelect';
 import ConsolidadoOperadorModal from '../components/ConsolidadoOperadorModal';
@@ -202,9 +202,8 @@ export function InstaladoresView() {
       });
 
     try {
-      let registeredRemotely = false;
-
-      // 1. Intentar registrar vía instaladores.createBatch (escribe en InsumosInstaladores y descuenta en MOVIMIENTOS)
+      // 1. Registro transaccional e idempotente vía instaladores.createBatch (v4.2 SDD-011)
+      const opId = generateOperationId('INS');
       try {
         await api.createInsumosInstaladoresBatch(
           {
@@ -217,32 +216,15 @@ export function InstaladoresView() {
             insumo: l.insumo,
             cantidad: l.cantidad,
             check: l.check,
-          }))
-        );
-        registeredRemotely = true;
-      } catch (batchErr) {
-        console.warn('Fallo createBatch en instaladores, intentando registro en movimientos:', batchErr);
-      }
-
-      // 2. Si no fue por createBatch, asentar las salidas en MOVIMIENTOS de inmediato para descontar stock en Google Sheets
-      if (!registeredRemotely) {
-        try {
-          const movsToCreate = processedLineas.map((l) => ({
-            fecha: fechaEntrega,
-            tipo: 'Salida (Entrega a Taller)',
-            sku: l.codigo !== 'S/SKU' ? l.codigo : '',
-            cantidad: l.cantidad,
-            taller_destino: 'Instaladores',
-            entregado_a: encargadoInstalacion,
-            observaciones: `Entrega a instalador: ${l.insumo} (${encargadoBodega})`,
-          }));
-
-          for (const m of movsToCreate) {
-            await api.createMovimiento(m);
+          })),
+          {
+            operation_id: opId,
+            offline_override: false,
           }
-        } catch (movErr) {
-          console.warn('Error registrando salidas en movimientos:', movErr);
-        }
+        );
+      } catch (batchErr) {
+        console.warn('Error en createBatch instaladores:', batchErr);
+        throw batchErr;
       }
 
       // 3. Guardar en caché local para visualización garantizada inmediata

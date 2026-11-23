@@ -413,6 +413,79 @@ const SCHEMA = {
       cantidad: 'number',
     },
   },
+
+  // --- ENTIDADES v4.2 (SDD-011 & SDD-012) ---
+  _txn: {
+    sheet: '_TXN',
+    headerRow: 1,
+    firstRow: 2,
+    pk: 'operation_id',
+    slotCols: ['operation_id'],
+    inputs: {
+      operation_id: 'operation_id',
+      modulo: 'modulo',
+      payload_hash: 'payload_hash',
+      estado: 'estado',
+      usuario: 'usuario',
+      respuesta_json: 'respuesta_json',
+      created_at: 'created_at',
+    },
+    computed: {},
+    types: {},
+  },
+
+  ordenes_compra: {
+    sheet: 'OrdenesCompra',
+    headerRow: 1,
+    firstRow: 2,
+    pk: 'oc_id',
+    slotCols: ['oc_id'],
+    inputs: {
+      oc_id: 'oc_id',
+      fecha_emision: 'fecha_emision',
+      cotizacion_id: 'cotizacion_id',
+      proveedor: 'proveedor',
+      taller_destino: 'taller_destino',
+      estado: 'estado',
+      total_orden: 'total_orden',
+      cant_items: 'cant_items',
+      notas: 'notas',
+      uid: 'uid',
+      updated_at: 'updated_at',
+    },
+    computed: {},
+    types: {
+      fecha_emision: 'date',
+      total_orden: 'number',
+      cant_items: 'number',
+    },
+  },
+
+  recepciones_bodega: {
+    sheet: 'RecepcionesBodega',
+    headerRow: 1,
+    firstRow: 2,
+    pk: 'recepcion_id',
+    slotCols: ['recepcion_id'],
+    inputs: {
+      recepcion_id: 'recepcion_id',
+      fecha_recepcion: 'fecha_recepcion',
+      oc_id: 'oc_id',
+      sku: 'sku',
+      cant_recibida: 'cant_recibida',
+      recibido_por: 'recibido_por',
+      taller: 'taller',
+      mov_uid: 'mov_uid',
+      observaciones: 'observaciones',
+      uid: 'uid',
+      created_at: 'created_at',
+    },
+    computed: {},
+    types: {
+      fecha_recepcion: 'date',
+      cant_recibida: 'number',
+    },
+  },
 };
 
 /* ========================================================================== *
@@ -424,7 +497,9 @@ const ROLE_PERMISSIONS = {
   compras: [
     'auth.me', 'config.get',
     'catalogo.list', 'catalogo.get', 'catalogo.create', 'catalogo.update', 'catalogo.nextSku', 'catalogo.kardex',
-    'compras.list', 'compras.get', 'compras.create', 'compras.createBatch', 'compras.update', 'compras.clear', 'compras.importDte',
+    'compras.list', 'compras.get', 'compras.create', 'compras.createBatch', 'compras.update', 'compras.clear', 'compras.importDte', 'compras.regularizarDte',
+    'ordenes.list', 'ordenes.get', 'ordenes.create', 'ordenes.createFromCotizacion', 'ordenes.update',
+    'recepciones.list', 'txn.list',
     'movimientos.list', 'seguimiento.list', 'equivalencias.list', 'conciliacion.get', 'dashboard.get', 'puertas.list', 'puertas.create', 'puertas.update',
     'instaladores.list', 'instaladores.create', 'instaladores.createBatch', 'instaladores.update', 'instaladores.clear',
   ],
@@ -432,6 +507,8 @@ const ROLE_PERMISSIONS = {
     'auth.me', 'config.get',
     'catalogo.list', 'catalogo.get', 'catalogo.kardex',
     'compras.list',
+    'ordenes.list', 'ordenes.get',
+    'recepciones.list', 'recepciones.create', 'txn.list',
     'movimientos.list', 'movimientos.create', 'movimientos.createBatch', 'movimientos.entregarAPuerta',
     'prestamos.list', 'prestamos.create', 'prestamos.devolver',
     'seguimiento.list', 'seguimiento.upsert', 'equivalencias.list', 'equivalencias.confirmar',
@@ -617,6 +694,21 @@ function getRoutes_() {
     'instaladores.createBatch': handleInstaladoresBatch_,
     'instaladores.update': function(p, u, reqId) { return updateRowByIndex_('insumos_instaladores', p.rowNumber, p.changes, u, reqId); },
     'instaladores.clear': function(p, u, reqId) { return clearRowByIndex_('insumos_instaladores', p.rowNumber, u, reqId); },
+
+    // --- NUEVAS RUTAS v4.2 (SDD-011, SDD-012, SDD-010) ---
+    'ordenes.list': function(p) { return listEntity_('ordenes_compra', p); },
+    'ordenes.get': function(p) { return getByPk_('ordenes_compra', p.oc_id); },
+    'ordenes.create': function(p, u, reqId) { return createRow_('ordenes_compra', p, u, reqId); },
+    'ordenes.createFromCotizacion': handleOrdenesCreateFromCotizacion_,
+    'ordenes.update': function(p, u, reqId) { return updateByPk_('ordenes_compra', p.oc_id, p.changes, u, reqId); },
+
+    'recepciones.list': function(p) { return listEntity_('recepciones_bodega', p); },
+    'recepciones.create': handleRecepcionesCreate_,
+
+    'txn.list': function(p) { return listEntity_('_txn', p); },
+    'txn.get': function(p) { return getByPk_('_txn', p.operation_id); },
+
+    'compras.regularizarDte': handleComprasRegularizarDte_,
   };
 }
 
@@ -960,9 +1052,171 @@ function createCatalogo_(payload, user, requestId) {
   return createRow_('catalogo', payload, user, requestId);
 }
 
+// ==========================================================================
+// SDD-011 & SDD-012: MOTOR TRANSACCIONAL, IDEMPOTENCIA Y PMP PERPETUO (v4.2)
+// ==========================================================================
+
+/**
+ * SDD-011 (Ampliado): Motor Transaccional e Idempotencia Persistente (_TXN)
+ * Garantiza Libro Único (MOVIMIENTOSInsumosOperativo como SSOT),
+ * detección de duplicados con _TXN y política de sobreventa controlada.
+ */
+function executeInventoryTx_(txConfig, user, requestId) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(SCRIPT_CONFIG.LOCK_TIMEOUT_MS);
+  try {
+    const modulo = txConfig.modulo || 'MOV';
+    const opId = txConfig.operation_id || ('OP-' + modulo + '-' + Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyyMMdd') + '-' + Math.floor(100000 + Math.random() * 900000));
+    
+    // Hash canónico del payload (SKUs, cantidades, taller, referencia)
+    const payloadHash = txConfig.payload_hash || sha256_(JSON.stringify({
+      modulo: modulo,
+      items: txConfig.items || [],
+      cabecera: txConfig.cabecera || {},
+    }));
+
+    // 1. Chequeo de idempotencia persistente en _TXN
+    const shTxn = getSheet_('_TXN');
+    const txnRows = shTxn.getDataRange().getValues();
+    if (txnRows.length > 1) {
+      for (let i = 1; i < txnRows.length; i++) {
+        if (String(txnRows[i][0]).trim() === opId) {
+          const storedHash = String(txnRows[i][2]).trim();
+          if (storedHash === payloadHash) {
+            // Idempotente: retornar respuesta ya guardada
+            try {
+              return JSON.parse(txnRows[i][5]);
+            } catch (e) {
+              return { ok: true, operation_id: opId, idempotent: true, estado: txnRows[i][3] };
+            }
+          } else {
+            throw appError_('CONFLICT', '409 CONFLICT: operation_id "' + opId + '" ya fue utilizado con un contenido diferente.');
+          }
+        }
+      }
+    }
+
+    // 2. Validación de política de sobreventa (D-4 / Regla 6.2)
+    const items = txConfig.items || [];
+    const offlineOverride = txConfig.offline_override === true;
+    let estadoTx = 'CONFIRMADO';
+
+    const catRows = listEntity_('catalogo', { pageSize: 5000 }).rows;
+    const catMap = {};
+    catRows.forEach(function(c) { if (c.sku) catMap[c.sku] = c; });
+
+    if (txConfig.isSalida) {
+      for (let j = 0; j < items.length; j++) {
+        const it = items[j];
+        const s = it.sku || it.codigo;
+        const q = Math.abs(Number(it.cantidad || 0));
+        const c = catMap[s] || {};
+        const stockActual = Number(c.stock_actual ?? 0);
+        if (stockActual < q) {
+          if (offlineOverride) {
+            estadoTx = 'STOCK_NEGATIVO_OFFLINE';
+          } else {
+            throw appError_('INSUFFICIENT_STOCK', '422 INSUFFICIENT_STOCK: Stock insuficiente para SKU ' + s + '. Stock disponible: ' + stockActual + ', solicitado: ' + q + '. Operación bloqueada (active offline_override si es entrega en obra).');
+          }
+        }
+      }
+    }
+
+    // 3. Ejecutar la mutación atómica
+    const executionResult = txConfig.action(opId, estadoTx);
+
+    // 4. Registrar en _TXN
+    const respJson = JSON.stringify(executionResult);
+    shTxn.appendRow([
+      opId,
+      modulo,
+      payloadHash,
+      estadoTx,
+      (user && user.username) || 'sistema',
+      respJson,
+      Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
+    ]);
+
+    logAudit_(user, 'TX_EXECUTE', modulo, opId, null, {
+      operation_id: opId,
+      estado: estadoTx,
+      items_count: items.length,
+    });
+
+    return executionResult;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * SDD-012: Recálculo de PMP Perpetuo (NIC 2 / NIIF)
+ * Se calcula en cada entrada y se almacena en Catalogo Columna U (PMP $) y V (Valoración).
+ */
+function updatePmpPerpetuo_(sku, cantEntrada, costoNetoUnitario) {
+  if (!sku || cantEntrada <= 0 || costoNetoUnitario <= 0) return;
+  const ss = getSpreadsheet_();
+  const shCat = ss.getSheetByName('Catalogo');
+  if (!shCat) return;
+
+  const data = shCat.getDataRange().getValues();
+  for (let r = 3; r < data.length; r++) {
+    if (String(data[r][0]).trim().toUpperCase() === String(sku).trim().toUpperCase()) {
+      const stockActual = Number(data[r][17] || 0); // Col R (index 17)
+      const pmpActual = Number(data[r][20] || 0);   // Col U (index 20)
+      
+      let pmpNuevo = costoNetoUnitario;
+      if (stockActual > 0) {
+        pmpNuevo = ((stockActual * pmpActual) + (cantEntrada * costoNetoUnitario)) / (stockActual + cantEntrada);
+      }
+      pmpNuevo = Number(pmpNuevo.toFixed(4));
+      
+      // Guardar valor en Col U (col 21, 1-indexed)
+      shCat.getRange(r + 1, 21).setValue(pmpNuevo);
+      break;
+    }
+  }
+}
+
+/**
+ * SDD-012: Tratamiento Fiscal DTE El Salvador (Art. 163 Código Tributario)
+ * CCF (DTE-03): Inventario al Neto, IVA Crédito Fiscal 13%, Percepción 1% (anticipo IVA, NO costo).
+ * Factura (DTE-01): Costo incluye IVA (no deducible).
+ */
+function calculateDteTaxBreakdown_(precioUnitarioPagado, tipoDte, proveedor) {
+  const isCcf = String(tipoDte || '').toUpperCase().indexOf('CCF') !== -1 || tipoDte === '03';
+  const totalUni = Number(precioUnitarioPagado || 0);
+  
+  if (isCcf) {
+    const netoUni = Number((totalUni / 1.13).toFixed(4));
+    const iva13Uni = Number((netoUni * 0.13).toFixed(4));
+    // Percepción 1% si proveedor es Gran Contribuyente (ej. Freund) y base >= $100.00
+    const provStr = String(proveedor || '').toLowerCase();
+    const esGranContribuyente = provStr.indexOf('freund') !== -1 || provStr.indexOf('vidri') !== -1 || provStr.indexOf('sisa') !== -1;
+    const percepcion1Uni = (esGranContribuyente && totalUni >= 100.0) ? Number((netoUni * 0.01).toFixed(4)) : 0;
+    return {
+      costo_neto_unit: netoUni,
+      iva_credito_13: iva13Uni,
+      iva_percibido_1: percepcion1Uni,
+      total_con_percepcion: Number((netoUni + iva13Uni + percepcion1Uni).toFixed(4)),
+      afecta_pmp_unit: netoUni,
+    };
+  } else {
+    // Factura consumidor final o no deducible: todo el valor es costo
+    return {
+      costo_neto_unit: totalUni,
+      iva_credito_13: 0,
+      iva_percibido_1: 0,
+      total_con_percepcion: totalUni,
+      afecta_pmp_unit: totalUni,
+    };
+  }
+}
+
 function createCompra_(payload, user, requestId) {
   validateSkuExists_(payload.sku);
-  if (Number(payload.cant_recibida || 0) <= 0) {
+  const cantRecibida = Number(payload.cant_recibida || 0);
+  if (cantRecibida <= 0) {
     throw appError_('VALIDATION', 'La cantidad recibida en Compras debe ser mayor a 0.');
   }
   if (!payload.fecha) {
@@ -971,64 +1225,79 @@ function createCompra_(payload, user, requestId) {
   if (!payload.tipo_dte) {
     payload.tipo_dte = 'Pendiente';
   }
-  return createRow_('compras', payload, user, requestId);
-}
 
-function createComprasBatch_(params, user, requestId) {
-  const cabecera = params.cabecera || {};
-  const lineas = params.lineas || [];
-  if (!lineas.length) throw appError_('VALIDATION', 'Debe enviar al menos una línea de compra.');
+  // SDD-012: Cálculo fiscal DTE y plazo de regularización
+  const tax = calculateDteTaxBreakdown_(payload.precio_unit_pagado, payload.tipo_dte, payload.proveedor);
+  payload.costo_neto_unit = tax.costo_neto_unit;
+  payload.iva_credito = tax.iva_credito_13;
+  payload.iva_percibido = tax.iva_percibido_1;
 
-  const results = [];
-  lineas.forEach(function(lin, idx) {
-    const merged = Object.assign({}, cabecera, lin);
-    const subReqId = requestId ? requestId + '_' + idx : null;
-    results.push(createCompra_(merged, user, subReqId));
-  });
-  return { count: results.length, items: results };
-}
-
-function handleComprasImportDte_(params, user, requestId) {
-  const dte = params.dteJson;
-  if (!dte || !dte.identificacion || !dte.cuerpoDocumento) {
-    throw appError_('VALIDATION', 'El JSON de DTE no contiene identificacion o cuerpoDocumento.');
+  // Límite de 5 días hábiles si es Pendiente (R-43)
+  if (payload.tipo_dte === 'Pendiente') {
+    const fecCompra = new Date(payload.fecha);
+    const limite = new Date(fecCompra.getTime() + 5 * 24 * 3600 * 1000);
+    payload.fecha_limite_dte = Utilities.formatDate(limite, SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd');
   }
 
-  const tipoMap = { '03': 'CCF', '01': 'Factura consumidor final', '14': 'Sujeto excluido' };
-  const tipoDte = tipoMap[dte.identificacion.tipoDte] || 'Pendiente';
-  const codGen = dte.identificacion.codigoGeneracion || dte.identificacion.numeroControl;
-  const fechaEmi = dte.identificacion.fecEmi;
-  const proveedor = (dte.emisor && dte.emisor.nombre) || 'Por asignar';
+  const resCompra = createRow_('compras', payload, user, requestId);
 
-  const comprasActuales = listEntity_('compras', { pageSize: 2000 }).rows;
-  if (codGen && comprasActuales.some(function(c) { return String(c.n_dte) === String(codGen); })) {
-    throw appError_('CONFLICT', 'El DTE con código de generación ' + codGen + ' ya fue registrado.');
+  // SDD-011: Entrada automática a Kardex único
+  const movPayload = {
+    fecha: payload.fecha,
+    tipo: 'Entrada (Compra)',
+    sku: payload.sku,
+    cantidad: cantRecibida,
+    taller_destino: payload.taller_destino || 'Bodega Central',
+    entregado_a: payload.proveedor || 'Proveedor',
+    observaciones: 'Recepción Compra ' + (payload.n_dte ? 'DTE ' + payload.n_dte : '') + (payload.observaciones ? ' | ' + payload.observaciones : ''),
+    ref_tipo: 'COMPRA',
+    ref_id: payload.n_dte || resCompra.row_id || 'COMPRA',
+    uid: 'MOV-REC-' + Utilities.getUuid().substring(0, 8),
+    updated_at: Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
+  };
+  createRow_('movimientos', movPayload, user, requestId ? requestId + '_mov' : null);
+
+  // SDD-012: Actualización de PMP Perpetuo
+  updatePmpPerpetuo_(payload.sku, cantRecibida, tax.afecta_pmp_unit);
+
+  return resCompra;
+}
+
+function handleComprasRegularizarDte_(params, user, requestId) {
+  if (!params.row_number && !params.id_compra) {
+    throw appError_('VALIDATION', 'Debe especificar row_number o id_compra para regularizar DTE.');
+  }
+  const sh = getSheet_('Compras');
+  const rowNum = Number(params.row_number || params.rowNumber);
+  const nuevoTipo = params.tipo_dte || 'CCF';
+  const nuevoDte = params.n_dte || '';
+
+  const rData = sh.getRange(rowNum, 1, 1, 20).getValues()[0];
+  const sku = rData[2]; // Col C (index 2)
+  const cant = Number(rData[4] || 0); // Cant recibida
+  const puPagado = Number(rData[5] || 0); // Precio unit
+  const prov = rData[1];
+
+  const tax = calculateDteTaxBreakdown_(puPagado, nuevoTipo, prov);
+
+  // Actualizar columnas de Compras
+  sh.getRange(rowNum, 10).setValue(nuevoTipo); // Tipo DTE
+  sh.getRange(rowNum, 11).setValue(nuevoDte);   // N DTE
+  if (params.observaciones) {
+    sh.getRange(rowNum, 9).setValue(params.observaciones);
   }
 
-  const lineas = dte.cuerpoDocumento.map(function(item) {
-    const precioUniRaw = Number(item.precioUni || 0);
-    const precioConIva = tipoDte === 'CCF'
-      ? Number((precioUniRaw * (1 + SCRIPT_CONFIG.IVA_DEFAULT)).toFixed(4))
-      : precioUniRaw;
-    return {
-      sku: item.codigo || params.defaultSku || 'GEN-002',
-      cant_pedida: Number(item.cantidad || 1),
-      cant_recibida: Number(item.cantidad || 1),
-      precio_unit_pagado: precioConIva,
-      observaciones: 'DTE ' + codGen + ' | ' + (item.descripcion || ''),
-    };
+  // Recalcular retroactivo PMP
+  updatePmpPerpetuo_(sku, cant, tax.afecta_pmp_unit);
+
+  logAudit_(user, 'REGULARIZAR_DTE', 'compras', 'Row_' + rowNum, null, {
+    sku: sku,
+    nuevo_tipo_dte: nuevoTipo,
+    nuevo_dte: nuevoDte,
+    pmp_recalculado_con: tax.afecta_pmp_unit,
   });
 
-  return createComprasBatch_({
-    cabecera: {
-      fecha: fechaEmi,
-      proveedor: proveedor,
-      tipo_dte: tipoDte,
-      n_dte: codGen,
-      taller_destino: params.taller_destino || 'Bodega',
-    },
-    lineas: lineas,
-  }, user, requestId);
+  return { ok: true, row_number: rowNum, sku: sku, nuevo_tipo_dte: nuevoTipo };
 }
 
 function createMovimiento_(payload, user, requestId) {
@@ -1038,8 +1307,12 @@ function createMovimiento_(payload, user, requestId) {
     throw appError_('VALIDATION', 'La cantidad del movimiento debe ser estrictamente mayor a 0.');
   }
 
-  const tipo = payload.tipo || 'Salida';
-  if (tipo === 'Salida') {
+  // Tipos de Kardex canónicos cerrados (SDD-011 & SDD-009)
+  let tipoCanonico = payload.tipo || 'Salida (Taller)';
+  if (tipoCanonico === 'Salida') tipoCanonico = 'Salida (Taller)';
+  if (tipoCanonico === 'Entrada') tipoCanonico = 'Entrada (Compra)';
+
+  if (tipoCanonico.indexOf('Salida') === 0) {
     const taller = String(payload.taller_destino || '').trim();
     if (!taller || taller.toLowerCase() === 'sin asignar') {
       throw appError_('VALIDATION', 'Toda Salida de insumos requiere indicar el Taller / destino válido.');
@@ -1050,11 +1323,28 @@ function createMovimiento_(payload, user, requestId) {
     payload.fecha = Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd');
   }
 
-  const res = createRow_('movimientos', payload, user, requestId);
-  res.stockWarning = (res.affected && res.affected.stock_actual < 0)
-    ? '⚠ El stock actual de ' + payload.sku + ' quedó en negativo (' + res.affected.stock_actual + ').'
-    : null;
-  return res;
+  // Ejecución a través del Motor Transaccional e Idempotente (SDD-011)
+  const txConfig = {
+    modulo: 'MOV',
+    operation_id: payload.operation_id,
+    isSalida: tipoCanonico.indexOf('Salida') === 0,
+    offline_override: payload.offline_override === true,
+    items: [{ sku: payload.sku, cantidad: cantidad }],
+    action: function(opId, estadoTx) {
+      payload.tipo = tipoCanonico;
+      payload.operation_id = opId;
+      payload.estado_tx = estadoTx;
+      const res = createRow_('movimientos', payload, user, requestId);
+      res.operation_id = opId;
+      res.estado_tx = estadoTx;
+      res.stockWarning = (res.affected && res.affected.stock_actual < 0)
+        ? '⚠ El stock actual de ' + payload.sku + ' quedó en negativo (' + res.affected.stock_actual + ').'
+        : null;
+      return res;
+    },
+  };
+
+  return executeInventoryTx_(txConfig, user, requestId);
 }
 
 function createMovimientosBatch_(params, user, requestId) {
@@ -1078,12 +1368,14 @@ function handleEntregarAPuerta_(params, user, requestId) {
   const puerta = getByPk_('agenda_puertas', params.sku_puerta);
   const movPayload = {
     fecha: params.fecha || Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd'),
-    tipo: 'Salida',
+    tipo: 'Salida (Taller)',
     sku: params.sku,
     cantidad: params.cantidad,
     taller_destino: params.taller_destino || puerta.taller || 'Santa Ana',
     entregado_a: params.entregado_a || '',
     observaciones: 'Puerta ' + params.sku_puerta + ' (' + (puerta.cliente || '') + ') | ' + (params.observaciones || ''),
+    ref_tipo: 'PUERTA',
+    ref_id: params.sku_puerta,
   };
   return createMovimiento_(movPayload, user, requestId);
 }
@@ -1109,52 +1401,169 @@ function handleInstaladoresBatch_(params, user, requestId) {
   const instaladorNombre = cabecera.encargado_instalacion || cabecera.instalador || 'Instaladores';
   const bodegaNombre = cabecera.encargado_bodega || (user ? user.username : 'Bodega Central');
 
-  const results = [];
-  lineas.forEach(function(lin, idx) {
-    const cant = Math.abs(Number(lin.cantidad || 0));
-    const subReqId = requestId ? requestId + '_' + idx : null;
-    const itemSku = lin.sku || lin.codigo || '';
+  // SDD-011: Ejecución transaccional e idempotente con Libro Único
+  const txConfig = {
+    modulo: 'INSTALADORES',
+    operation_id: params.operation_id,
+    isSalida: true,
+    offline_override: params.offline_override === true,
+    items: lineas.map(function(l) { return { sku: l.sku || l.codigo, cantidad: Math.abs(Number(l.cantidad || 0)) }; }),
+    action: function(opId, estadoTx) {
+      const results = [];
+      lineas.forEach(function(lin, idx) {
+        const cant = Math.abs(Number(lin.cantidad || 0));
+        const subReqId = requestId ? requestId + '_' + idx : null;
+        const itemSku = lin.sku || lin.codigo || '';
 
-    // 1. Descuento atómico en MOVIMIENTOSInsumosOperativo (R-32)
-    let movUid = 'MOV-' + Utilities.getUuid().substring(0, 8);
-    if (cant > 0 && itemSku && itemSku !== 'S/SKU') {
-      const movPayload = {
-        fecha: fechaHoy,
-        tipo: 'Salida',
-        sku: itemSku,
-        cantidad: -cant,
-        taller_destino: tallerDestino,
-        entregado_a: instaladorNombre,
-        observaciones: 'Despacho instalador lote ' + loteId + (lin.insumo ? ' | ' + lin.insumo : ''),
-        ref_tipo: 'INSTALADOR',
-        ref_id: loteId,
+        // 1. Descuento atómico en MOVIMIENTOSInsumosOperativo (Kardex único con tipo canónico y cantidad positiva)
+        let movUid = 'MOV-' + Utilities.getUuid().substring(0, 8);
+        if (cant > 0 && itemSku && itemSku !== 'S/SKU') {
+          const movPayload = {
+            fecha: fechaHoy,
+            tipo: 'Salida (Instalador)',
+            sku: itemSku,
+            cantidad: cant,
+            taller_destino: tallerDestino,
+            entregado_a: instaladorNombre,
+            observaciones: 'Despacho instalador lote ' + loteId + (lin.insumo ? ' | ' + lin.insumo : ''),
+            ref_tipo: 'INSTALADOR',
+            ref_id: loteId,
+            lote_id: loteId,
+            uid: movUid,
+            updated_at: Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
+          };
+          createRow_('movimientos', movPayload, user, subReqId ? subReqId + '_mov' : null);
+        }
+
+        // 2. Registro persistente en InsumosInstaladores
+        const payload = {
+          fecha: fechaHoy,
+          lote_id: loteId,
+          sku: itemSku,
+          codigo: itemSku,
+          insumo: lin.insumo || lin.descripcion || itemSku,
+          check: lin.check === true || lin.check === 'SI' || lin.check === 'true' ? 'SI' : 'NO',
+          cantidad: cant,
+          taller: tallerDestino,
+          encargado_instalacion: instaladorNombre,
+          encargado_bodega: bodegaNombre,
+          mov_uid: movUid,
+          uid: 'INS-' + Utilities.getUuid().substring(0, 8),
+          updated_at: Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
+        };
+        results.push(createRow_('insumos_instaladores', payload, user, subReqId));
+      });
+
+      return {
+        ok: true,
+        operation_id: opId,
+        estado_tx: estadoTx,
+        count: results.length,
         lote_id: loteId,
-        uid: movUid,
-        updated_at: Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
+        items: results,
       };
-      createRow_('movimientos', movPayload, user, subReqId ? subReqId + '_mov' : null);
-    }
+    },
+  };
 
-    // 2. Registro persistente en InsumosInstaladores
-    const payload = {
-      fecha: fechaHoy,
-      lote_id: loteId,
-      sku: itemSku,
-      codigo: itemSku,
-      insumo: lin.insumo || lin.descripcion || itemSku,
-      check: lin.check === true || lin.check === 'SI' || lin.check === 'true' ? 'SI' : 'NO',
-      cantidad: cant,
-      taller: tallerDestino,
-      encargado_instalacion: instaladorNombre,
-      encargado_bodega: bodegaNombre,
-      mov_uid: movUid,
-      uid: 'INS-' + Utilities.getUuid().substring(0, 8),
-      updated_at: Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
-    };
-    results.push(createRow_('insumos_instaladores', payload, user, subReqId));
-  });
+  return executeInventoryTx_(txConfig, user, requestId);
+}
 
-  return { count: results.length, lote_id: loteId, items: results };
+// --- CRUCE DE TRES VÍAS: ÓRDENES DE COMPRA Y RECEPCIONES DE BODEGA (SDD-012) ---
+
+function handleOrdenesCreateFromCotizacion_(params, user, requestId) {
+  const cotId = params.cotizacion_id;
+  if (!cotId) throw appError_('VALIDATION', 'Debe indicar cotizacion_id para generar la Orden de Compra.');
+
+  const cot = handleCotizacionesGet_({ cot_id: cotId });
+  const ocId = 'OC-26-' + ('0000' + (listEntity_('ordenes_compra', { pageSize: 5000 }).rows.length + 1)).slice(-4);
+  const fechaHoy = Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd');
+
+  const payloadOC = {
+    oc_id: ocId,
+    fecha_emision: fechaHoy,
+    cotizacion_id: cotId,
+    proveedor: cot.proveedor || 'Freund',
+    taller_destino: cot.taller_destino || 'Sonsonate',
+    estado: 'EMITIDA',
+    total_orden: Number(cot.total || 0),
+    cant_items: Number(cot.items_marcados || (cot.lineas ? cot.lineas.length : 0)),
+    notas: 'Generada desde Cotización ' + cotId + (params.notas ? ' | ' + params.notas : ''),
+    uid: 'OC-' + Utilities.getUuid().substring(0, 8),
+    updated_at: Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
+  };
+
+  const res = createRow_('ordenes_compra', payloadOC, user, requestId);
+
+  // Marcar cotización como APROBADA
+  handleCotizacionesSetEstado_({ cot_id: cotId, estado: 'APROBADA' }, user, requestId);
+
+  return { ok: true, oc_id: ocId, row: res };
+}
+
+function handleRecepcionesCreate_(params, user, requestId) {
+  const ocId = params.oc_id;
+  const sku = params.sku;
+  const cantRecibida = Number(params.cant_recibida || 0);
+
+  if (!sku || cantRecibida <= 0) {
+    throw appError_('VALIDATION', 'Debe indicar SKU y cantidad recibida mayor a 0.');
+  }
+
+  const recId = 'REC-' + Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyMMdd-HHmm') + '-' + Math.floor(Math.random() * 900 + 100);
+  const fechaHoy = params.fecha_recepcion || Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd');
+  const movUid = 'MOV-REC-' + Utilities.getUuid().substring(0, 8);
+
+  // 1. Guardar en RecepcionesBodega
+  const payloadRec = {
+    recepcion_id: recId,
+    fecha_recepcion: fechaHoy,
+    oc_id: ocId || 'COMPRA_DIRECTA',
+    sku: sku,
+    cant_recibida: cantRecibida,
+    recibido_por: (user && user.username) || 'Bodega Central',
+    taller: params.taller || 'Bodega Central',
+    mov_uid: movUid,
+    observaciones: params.observaciones || '',
+    uid: 'REC-' + Utilities.getUuid().substring(0, 8),
+    created_at: Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
+  };
+  const resRec = createRow_('recepciones_bodega', payloadRec, user, requestId);
+
+  // 2. Registrar Entrada física en Kardex único (MOVIMIENTOSInsumosOperativo)
+  const movPayload = {
+    fecha: fechaHoy,
+    tipo: 'Entrada (Compra)',
+    sku: sku,
+    cantidad: cantRecibida,
+    taller_destino: params.taller || 'Bodega Central',
+    entregado_a: (user && user.username) || 'Bodega Central',
+    observaciones: 'Recepción ' + recId + (ocId ? ' contra ' + ocId : '') + (params.observaciones ? ' | ' + params.observaciones : ''),
+    ref_tipo: 'RECEPCION_OC',
+    ref_id: ocId || recId,
+    uid: movUid,
+    updated_at: Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
+  };
+  createRow_('movimientos', movPayload, user, requestId ? requestId + '_mov' : null);
+
+  // 3. Actualizar estado y cant_recibida en OrdenesCompra si viene vinculada
+  if (ocId && ocId !== 'COMPRA_DIRECTA') {
+    try {
+      const oc = getByPk_('ordenes_compra', ocId);
+      if (oc) {
+        updateByPk_('ordenes_compra', ocId, {
+          estado: 'PARCIAL',
+          updated_at: Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
+        }, user, requestId);
+      }
+    } catch(e) {}
+  }
+
+  // 4. Si se indicó precio unitario neto, actualizar PMP Perpetuo
+  if (params.precio_neto_unit && Number(params.precio_neto_unit) > 0) {
+    updatePmpPerpetuo_(sku, cantRecibida, Number(params.precio_neto_unit));
+  }
+
+  return { ok: true, recepcion_id: recId, mov_uid: movUid };
 }
 
 function createPrestamo_(payload, user, requestId) {
@@ -1650,44 +2059,166 @@ function handleCotizacionesGet_(params) {
 }
 
 function handleCotizacionesFromAlerts_(params) {
+  const proveedorPref = params.proveedor || 'Freund';
+  const catalogo = listEntity_('catalogo', { pageSize: 5000 }).rows;
+  const precios = listEntity_('precios_proveedor', { pageSize: 500 }).rows;
+  let cfgMap = {};
+  try {
+    const cfgRows = fcRead_('config').rows;
+    cfgRows.forEach(function(r) { cfgMap[r.sku] = r; });
+  } catch(e) {}
+  const P = fcParams_();
+
+  // 1. Obtener órdenes de compra abiertas para calcular IP (Inventario Proyectado - SDD-010 §4.1)
+  const ocAbiertasPorSku = {};
+  try {
+    const ocRows = listEntity_('ordenes_compra', { pageSize: 5000 }).rows;
+    ocRows.forEach(function(oc) {
+      if (oc.estado === 'EMITIDA' || oc.estado === 'PARCIAL') {
+        const s = oc.sku;
+        const pend = (Number(oc.cant_pedida) || 0) - (Number(oc.cant_recibida) || 0);
+        if (s && pend > 0) {
+          ocAbiertasPorSku[s] = (ocAbiertasPorSku[s] || 0) + pend;
+        }
+      }
+    });
+  } catch(e) {}
+
+  // 2. Obtener demanda de puertas BOM (excluyendo "En confirmación" - SDD-010 & R-16)
+  const bomRows = fcRead_('bom').rows;
+  const agendaRows = listEntity_('agenda_puertas', { pageSize: 5000 }).rows;
+  const unidadesPorModelo = {};
+  agendaRows.forEach(function(a) {
+    const est = String(a.estado || '').toLowerCase();
+    if (/por fabricar|programad|en proceso/.test(est) && !/confirmaci[oó]n/.test(est)) {
+      const m = String(a.modelo || '').trim().toUpperCase();
+      if (m) unidadesPorModelo[m] = (unidadesPorModelo[m] || 0) + Number(a.unidades || 0);
+    }
+  });
+
+  const demBomPorSku = {};
+  bomRows.forEach(function(b) {
+    const u = unidadesPorModelo[String(b.modelo || '').trim().toUpperCase()] || 0;
+    if (u > 0 && b.sku) {
+      demBomPorSku[b.sku] = (demBomPorSku[b.sku] || 0) + (u * Number(b.cantidad_por_puerta || 0));
+    }
+  });
+
+  // 3. Revisión periódica R = 6 días operativos (SDD-010)
+  const R = Number(P.REVISION_DIAS || 6);
+
+  // Obtener salidas de los últimos 28 días excluyendo ref_tipo = 'PUERTA' (evita doble conteo)
+  const movs = listEntity_('movimientos', { pageSize: 50000 }).rows;
+  const hoyStr = Utilities.formatDate(new Date(), SCRIPT_CONFIG.TIMEZONE, 'yyyy-MM-dd');
+  const desde28Str = fcAddDays_(hoyStr, -28);
+  const consumoDiarioPorSku = {};
+  const conteoObsPorSku = {};
+
+  movs.forEach(function(m) {
+    if (String(m.tipo || '').toLowerCase().indexOf('salida') !== -1 && m.fecha >= desde28Str) {
+      if (String(m.ref_tipo || '').toUpperCase() === 'PUERTA') return;
+      const s = m.sku;
+      if (s) {
+        consumoDiarioPorSku[s] = (consumoDiarioPorSku[s] || 0) + Math.abs(Number(m.cantidad || 0));
+        conteoObsPorSku[s] = (conteoObsPorSku[s] || 0) + 1;
+      }
+    }
+  });
+
   const alertsRes = getStockoutAlerts_({ niveles: ['ROJO', 'NARANJA'], incluirGris: false });
   const criticos = alertsRes.alertas || [];
-  const precios = listEntity_('precios_proveedor', { pageSize: 500 }).rows;
 
-  const proveedorPref = params.proveedor || 'Freund';
-  const lineas = criticos.map(function(c) {
+  const lineas = [];
+  criticos.forEach(function(c) {
+    const sku = c.sku;
+    if (!sku) return;
+    const catItem = catalogo.find(function(k) { return k.sku === sku; }) || {};
+    const stockActual = Number(catItem.stock_actual ?? c.stock_actual ?? 0);
+    const stockMinimo = Number(catItem.stock_minimo || 5);
+    const cfg = cfgMap[sku] || {};
+    const leadTime = Number(cfg.lead_time || P.LEAD_TIME_DEFAULT || 2);
+    const empaque = Math.max(1, Number(cfg.empaque || 1));
+    const enTransito = Number(ocAbiertasPorSku[sku] || 0);
+
+    // IP = Stock Actual + En Tránsito (OC)
+    const IP = stockActual + enTransito;
+
+    // d = consumo diario promedio (24 días operativos en 28 días calendario)
+    const totConsumo = consumoDiarioPorSku[sku] || 0;
+    const d = totConsumo / 24;
+    const demBOM = demBomPorSku[sku] || 0;
+    const numObs = conteoObsPorSku[sku] || 0;
+
+    let SS = stockMinimo;
+    let modoCalculo = 'BOOTSTRAP (Sin EMA)';
+
+    if (numObs >= 24) {
+      // Modo Madurez Estadística (EMA + ABC - SDD-010 §4.2)
+      modoCalculo = 'DEMANDA_REGULAR';
+      const Z = 1.65; // Nivel de servicio 95%
+      const sigma = Math.max(0.5, d * 0.4);
+      SS = Math.max(stockMinimo, Number((Z * sigma * Math.sqrt(leadTime + R)).toFixed(1)));
+    } else {
+      // Modo Bootstrap (Arranque en frío): sin EMA para historial corto
+      modoCalculo = 'BOOTSTRAP (Sin EMA)';
+      SS = stockMinimo;
+    }
+
+    // Nivel objetivo S = (d * (LT + R)) + demBOM + SS
+    const demandaPeriodo = Number((d * (leadTime + R)).toFixed(1));
+    const S = Math.ceil(demandaPeriodo + demBOM + SS);
+    const Q = Math.max(0, S - IP);
+
+    // Ajuste a empaque
+    const Qcompra = Q > 0 ? Math.ceil(Q / empaque) * empaque : 0;
+
+    if (Qcompra <= 0 && stockActual > 0) return; // Ya cubierto
+
     const matchPrecio = precios.find(function(p) {
-      return p.sku === c.sku && p.proveedor === proveedorPref;
-    }) || precios.find(function(p) { return p.sku === c.sku; });
+      return p.sku === sku && p.proveedor === proveedorPref;
+    }) || precios.find(function(p) { return p.sku === sku; });
 
     let tipo = 'INSUMO';
-    if (c.sku.indexOf('MET') === 0 || c.sku.indexOf('VID') === 0 || c.sku.indexOf('LIV') === 0) {
+    if (sku.indexOf('MET') === 0 || sku.indexOf('VID') === 0 || sku.indexOf('CLI') === 0 || sku.indexOf('LIV') === 0) {
       tipo = 'MATERIAL';
-    } else if (c.sku.indexOf('EQU') === 0) {
+    } else if (sku.indexOf('EQU') === 0) {
       tipo = 'EQUIPO';
     }
 
-    const factor = SCRIPT_CONFIG.FACTOR_PEDIDO || 1.9;
-    const sugerido = Math.max(1, Math.ceil((Number(c.stock_minimo) || 5) * factor - (Number(c.stock_actual) || 0)));
-
-    return {
+    lineas.push({
       incluir: true,
       tipo_item: tipo,
-      sku: c.sku,
+      sku: sku,
       codigo_proveedor: matchPrecio ? matchPrecio.codigo_proveedor : '',
-      descripcion: c.descripcion || '',
-      unidad: c.unidad || 'unidad',
-      cantidad: sugerido,
-      precio_unitario: matchPrecio ? Number(matchPrecio.ultimo_precio || 0) : Number(c.pmp || 0),
+      descripcion: c.descripcion || catItem.descripcion || '',
+      unidad: c.unidad || catItem.unidad || 'unidad',
+      cantidad: Qcompra > 0 ? Qcompra : Math.max(1, stockMinimo),
+      precio_unitario: matchPrecio ? Number(matchPrecio.ultimo_precio || 0) : Number(c.pmp || catItem.pmp || 0),
       incluye_iva: matchPrecio ? (matchPrecio.incluye_iva === 'SI' || matchPrecio.incluye_iva === true) : false,
       taller_linea: 'Sonsonate',
-    };
+      // Metadata auditada transparente (SDD-010 §4.3)
+      desglose_calculo: {
+        stock_actual: stockActual,
+        en_transito_oc: enTransito,
+        ip: IP,
+        demanda_periodo: demandaPeriodo,
+        demanda_bom: demBOM,
+        stock_seguridad: SS,
+        objetivo_s: S,
+        calculado_q: Q,
+        empaque: empaque,
+        ajustado_empaque: Qcompra,
+        modo_calculo: modoCalculo,
+      },
+    });
   });
 
   return {
     proveedor: proveedorPref,
     lineas: lineas,
     total_items: lineas.length,
+    revision_dias: R,
+    criterio: 'Revisión Periódica R=' + R + 'd + BOM (Sin multiplicador 1.9x)',
   };
 }
 
@@ -1990,7 +2521,7 @@ function handleAuthLogin_(params) {
   }
 
   const ss = getSpreadsheet_();
-  let shUsers = ss.getSheetByName('_USERS');
+  let shUsers = ss.getSheetByName('Usuarios') || ss.getSheetByName('_USERS') || ss.getSheetByName('USUARIOS');
   if (!shUsers) {
     shUsers = ss.insertSheet('_USERS');
     shUsers.appendRow(['username', 'nombre', 'rol', 'salt', 'pin_sha256', 'taller', 'activo', 'intentos_fallidos', 'bloqueado_hasta']);
@@ -2126,8 +2657,8 @@ function handleAuthUpdatePassword_(params, user) {
   if (!newPin || newPin.length < 4) throw appError_('VALIDATION', 'El nuevo PIN debe contener al menos 4 caracteres.');
 
   const ss = getSpreadsheet_();
-  const shUsers = ss.getSheetByName('_USERS');
-  if (!shUsers) throw appError_('NOT_FOUND', 'No se encontró la hoja _USERS.');
+  const shUsers = ss.getSheetByName('Usuarios') || ss.getSheetByName('_USERS') || ss.getSheetByName('USUARIOS');
+  if (!shUsers) throw appError_('NOT_FOUND', 'No se encontró la hoja Usuarios o _USERS.');
 
   const rows = shUsers.getDataRange().getValues();
   const headers = rows[0].map(function(h) { return String(h || '').trim().toLowerCase(); });

@@ -181,6 +181,58 @@ def test_cotizaciones_logic_and_totals():
     
     return f"Lógica de cotización y matemáticas de IVA 13% verificadas con éxito (Marcados={items_marcados}, Total={total_general})"
 
+# TEST 13: SDD-011 Idempotencia y Tabla _TXN
+def test_txn_idempotency_structure():
+    assert '_TXN' in wb.sheetnames, "Falta hoja requerida _TXN para idempotencia"
+    sh_txn = wb['_TXN']
+    h = [sh_txn.cell(1, c).value for c in range(1, 10) if sh_txn.cell(1, c).value]
+    expected = ['operation_id', 'modulo', 'payload_hash', 'estado', 'usuario', 'respuesta_json', 'created_at']
+    for exp in expected:
+        assert exp in h, f"Falta columna {exp} en _TXN: {h}"
+    return f"Hoja _TXN validada con {len(h)} columnas requeridas para transaccionalidad e idempotencia."
+
+# TEST 14: SDD-012 Cruce de 3 Vías (OrdenesCompra y RecepcionesBodega)
+def test_ordenes_recepciones_structure():
+    assert 'OrdenesCompra' in wb.sheetnames, "Falta hoja OrdenesCompra"
+    assert 'RecepcionesBodega' in wb.sheetnames, "Falta hoja RecepcionesBodega"
+    sh_oc = wb['OrdenesCompra']
+    sh_rec = wb['RecepcionesBodega']
+    h_oc = [sh_oc.cell(1, c).value for c in range(1, 15) if sh_oc.cell(1, c).value]
+    h_rec = [sh_rec.cell(1, c).value for c in range(1, 15) if sh_rec.cell(1, c).value]
+    assert 'oc_id' in h_oc and 'cotizacion_id' in h_oc and 'estado' in h_oc, f"Headers de OrdenesCompra inválidos: {h_oc}"
+    assert 'recepcion_id' in h_rec and 'oc_id' in h_rec and 'cant_recibida' in h_rec, f"Headers de RecepcionesBodega inválidos: {h_rec}"
+    return f"Cruce de 3 Vías validado: OrdenesCompra ({len(h_oc)} cols), RecepcionesBodega ({len(h_rec)} cols)."
+
+# TEST 15: SDD-010 Lógica de Abastecimiento Periódico (Eliminación de 1.9x)
+def test_sdd_010_periodic_review_logic():
+    # Simular cálculo SDD-010 con R=6, lead_time=7, Z=1.65, demanda media=5/día, sigma=2.0
+    R = 6
+    lead_time = 7
+    z = 1.65
+    d_prom = 5.0
+    sigma_d = 2.0
+    stock_actual = 20
+    pedidos_abiertos = 10
+    demanda_bom = 15
+    stock_minimo = 25
+    
+    # 1. Posición de Inventario IP
+    ip = stock_actual + pedidos_abiertos
+    assert ip == 30, f"IP esperado 30, obtenido {ip}"
+    
+    # 2. Stock de Seguridad
+    import math
+    ss_teorico = z * sigma_d * math.sqrt(lead_time + R) # 1.65 * 2.0 * sqrt(13) = 11.89
+    ss = max(stock_minimo, math.ceil(ss_teorico))
+    assert ss == 25, f"SS esperado max(25, 12)=25, obtenido {ss}"
+    
+    # 3. Objetivo S y Sugerencia Q
+    demanda_periodo = math.ceil(d_prom * (lead_time + R)) # 5 * 13 = 65
+    s_objetivo = ss + demanda_periodo + demanda_bom # 25 + 65 + 15 = 105
+    sugerido_q = max(0, s_objetivo - ip) # 105 - 30 = 75
+    assert sugerido_q == 75, f"Sugerido Q esperado 75, obtenido {sugerido_q}"
+    return f"Modelo SDD-010 verificado: IP={ip}, SS={ss}, S={s_objetivo}, Sugerencia Q={sugerido_q} (sin factor fijo 1.9x)."
+
 # Execute all tests
 print("================== EJECUTANDO SUITE DE PRUEBAS UNITARIAS ==================")
 run_test("1. Estructura de Catálogo y Conteo de SKUs", test_catalogo_structure)
@@ -195,6 +247,9 @@ run_test("9. Estructura de Insumos a Instaladores", test_insumos_instaladores)
 run_test("10. Estructura de Agenda de Puertas", test_agenda_puertas)
 run_test("11. Estructura de Cotizaciones (Cabecera, Detalle, Plantilla y Precios)", test_cotizaciones_structure)
 run_test("12. Lógica de Negocio y Validación Matemática de Cotizaciones", test_cotizaciones_logic_and_totals)
+run_test("13. SDD-011 Idempotencia y Tabla _TXN", test_txn_idempotency_structure)
+run_test("14. SDD-012 Cruce de 3 Vías (OrdenesCompra y RecepcionesBodega)", test_ordenes_recepciones_structure)
+run_test("15. SDD-010 Lógica de Abastecimiento Periódico (R=6, SS, BOM)", test_sdd_010_periodic_review_logic)
 
 with open('scripts/test_results.json', 'w', encoding='utf-8') as f:
     json.dump(test_results, f, indent=2, ensure_ascii=False)

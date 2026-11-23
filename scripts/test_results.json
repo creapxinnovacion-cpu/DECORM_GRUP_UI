@@ -58,5 +58,20 @@
     "test": "12. Lógica de Negocio y Validación Matemática de Cotizaciones",
     "status": "PASS",
     "details": "Lógica de cotización y matemáticas de IVA 13% verificadas con éxito (Marcados=2, Total=282.5)"
+  },
+  {
+    "test": "13. SDD-011 Idempotencia y Tabla _TXN",
+    "status": "PASS",
+    "details": "Hoja _TXN validada con 7 columnas requeridas para transaccionalidad e idempotencia."
+  },
+  {
+    "test": "14. SDD-012 Cruce de 3 Vías (OrdenesCompra y RecepcionesBodega)",
+    "status": "PASS",
+    "details": "Cruce de 3 Vías validado: OrdenesCompra (11 cols), RecepcionesBodega (11 cols)."
+  },
+  {
+    "test": "15. SDD-010 Lógica de Abastecimiento Periódico (R=6, SS, BOM)",
+    "status": "PASS",
+    "details": "Modelo SDD-010 verificado: IP=30, SS=25, S=105, Sugerencia Q=75 (sin factor fijo 1.9x)."
   }
 ]

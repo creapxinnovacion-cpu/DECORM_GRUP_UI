@@ -10,6 +10,13 @@ export function generateRequestId() {
   return 'req_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
 }
 
+// SDD-011: Generador persistente de Identificadores de Operación Única
+export function generateOperationId(modulo = 'MOV') {
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const rand = Math.floor(100000 + Math.random() * 900000);
+  return `OP-${modulo.toUpperCase()}-${dateStr}-${rand}`;
+}
+
 // Token helper
 export function getAuthToken() {
   return localStorage.getItem('dicorms_token') || '';
@@ -282,6 +289,22 @@ export const api = {
   clearCompra: (rowNumber) => apiRequest('compras.clear', { rowNumber }),
   importDte: (dteJson, defaultSku, taller_destino) =>
     apiRequest('compras.importDte', { dteJson, defaultSku, taller_destino }),
+  regularizarDte: (rowNumber, tipo_dte, n_dte, observaciones = '') =>
+    apiRequest('compras.regularizarDte', { row_number: rowNumber, tipo_dte, n_dte, observaciones }),
+
+  // Órdenes de Compra (Cruce de 3 Vías v4.2 - SDD-012)
+  getOrdenes: (params = {}) => apiRequest('ordenes.list', params),
+  getOrden: (oc_id) => apiRequest('ordenes.get', { oc_id }),
+  createOrdenFromCotizacion: (cotizacion_id, notas = '') =>
+    apiRequest('ordenes.createFromCotizacion', { cotizacion_id, notas }),
+  updateOrden: (oc_id, changes) => apiRequest('ordenes.update', { oc_id, changes }),
+
+  // Recepciones de Bodega (Cruce de 3 Vías v4.2 - SDD-012)
+  getRecepciones: (params = {}) => apiRequest('recepciones.list', params),
+  createRecepcion: (payload) => apiRequest('recepciones.create', payload),
+
+  // Idempotencia y Transacciones (_TXN - SDD-011)
+  getTxns: (params = {}) => apiRequest('txn.list', params),
 
   // Movimientos
   getMovimientos: (params = {}) => apiRequest('movimientos.list', params),
@@ -313,8 +336,8 @@ export const api = {
   // Insumos Instaladores (CRUD & Batch)
   getInsumosInstaladores: (params = {}) => apiRequest('instaladores.list', params),
   createInsumoInstalador: (payload) => apiRequest('instaladores.create', payload),
-  createInsumosInstaladoresBatch: (cabecera, lineas) =>
-    apiRequest('instaladores.createBatch', { cabecera, lineas }),
+  createInsumosInstaladoresBatch: (cabecera, lineas, extra = {}) =>
+    apiRequest('instaladores.createBatch', { cabecera, lineas, ...extra }),
   updateInsumoInstalador: (rowNumber, changes) =>
     apiRequest('instaladores.update', { rowNumber, changes }),
   clearInsumoInstalador: (rowNumber) => apiRequest('instaladores.clear', { rowNumber }),

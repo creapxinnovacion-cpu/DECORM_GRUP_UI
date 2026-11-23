@@ -28,6 +28,8 @@ import {
   AlertTriangle,
   Minus,
   Check,
+  ShoppingCart,
+  Users,
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
@@ -519,6 +521,56 @@ export function CotizacionesView({ onNavigateCompras }) {
     });
   }, [formLineas, filterTipoItem, busquedaLinea]);
 
+  const handleExportGeneral = () => {
+    const headers = ['Cotización ID', 'Fecha', 'Proveedor', 'Destino', 'Estado', 'Fiscal', 'Ítems', 'Subtotal', 'IVA', 'Total', 'Notas'];
+    const rows = cotizaciones.map((c) => [
+      `"${c.cotizacion_id || ''}"`,
+      `"${c.fecha || ''}"`,
+      `"${c.proveedor || ''}"`,
+      `"${c.taller_destino || ''}"`,
+      `"${c.estado || ''}"`,
+      `"${c.precios_incluyen_iva ? 'IVA Incluido' : '+13% IVA'}"`,
+      c.items_marcados || (c.lineas ? c.lineas.filter((l) => l.incluir).length : 0),
+      Number(c.subtotal_neto || 0).toFixed(2),
+      Number(c.iva_13 || 0).toFixed(2),
+      Number(c.total || 0).toFixed(2),
+      `"${(c.notas || '').replace(/"/g, '""')}"`,
+    ]);
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Reporte_General_Cotizaciones_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportEspecifico = () => {
+    const headers = ['Cotización ID', 'Fecha', 'Proveedor', 'Destino', 'Estado', 'Fiscal', 'Ítems', 'Subtotal', 'IVA', 'Total', 'Notas'];
+    const rows = cotizacionesFiltradas.map((c) => [
+      `"${c.cotizacion_id || ''}"`,
+      `"${c.fecha || ''}"`,
+      `"${c.proveedor || ''}"`,
+      `"${c.taller_destino || ''}"`,
+      `"${c.estado || ''}"`,
+      `"${c.precios_incluyen_iva ? 'IVA Incluido' : '+13% IVA'}"`,
+      c.items_marcados || (c.lineas ? c.lineas.filter((l) => l.incluir).length : 0),
+      Number(c.subtotal_neto || 0).toFixed(2),
+      Number(c.iva_13 || 0).toFixed(2),
+      Number(c.total || 0).toFixed(2),
+      `"${(c.notas || '').replace(/"/g, '""')}"`,
+    ]);
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Reporte_Especifico_Cotizaciones_${filterEstado}_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-6">
       {/* 1. Header & KPIs de Cotizaciones */}
@@ -531,23 +583,41 @@ export function CotizacionesView({ onNavigateCompras }) {
                 <FileText className="w-6 h-6 text-amber-500" />
                 Módulo Maestro de Cotizaciones
                 <span className="text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2.5 py-0.5 rounded-full">
-                  v4.1 Clean Code
+                  v4.2 Clean Code
                 </span>
               </h2>
             </div>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              Cotizaciones multi-proveedor con checkboxes, factor 1.9x, control fiscal de IVA y exportación para Finanzas / WhatsApp.
+              Cotizaciones multi-proveedor con cálculo transparente (R=6, SS, BOM), control fiscal de IVA y exportación para Finanzas / WhatsApp.
             </p>
           </div>
 
           {/* Botones de Acción Principal */}
           <div className="flex flex-wrap items-center gap-2.5">
             <button
+              type="button"
+              onClick={handleExportGeneral}
+              className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 text-xs font-bold rounded-xl transition cursor-pointer min-h-[44px]"
+              title="Exportar Reporte General de Cotizaciones en CSV"
+            >
+              <Users className="w-4 h-4 text-emerald-400" />
+              <span>Reporte General</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleExportEspecifico}
+              className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-sky-400 border border-sky-500/30 text-xs font-bold rounded-xl transition cursor-pointer min-h-[44px]"
+              title="Exportar Reporte Específico Filtrado en CSV"
+            >
+              <FileText className="w-4 h-4 text-sky-400" />
+              <span>Reporte Específico</span>
+            </button>
+            <button
               onClick={handleCotizarDesdeAlertas}
               className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-bold text-xs shadow-lg shadow-rose-950/40 cursor-pointer min-h-[44px] transition-all transform active:scale-95"
             >
               <Sparkles className="w-4 h-4" />
-              Cotizar Alertas Críticas (1.9x)
+              Cotizar Sugerencias Abastecimiento
             </button>
             <button
               onClick={handleNuevaCotizacion}
@@ -819,6 +889,28 @@ export function CotizacionesView({ onNavigateCompras }) {
                     >
                       <FileSpreadsheet className="w-4 h-4" />
                     </button>
+
+                    {/* Generar Orden de Compra (Cruce de 3 Vías v4.2 - SDD-012) */}
+                    {(cot.estado === 'APROBADA' || cot.estado === 'RECIBIDA') && (
+                      <button
+                        onClick={async () => {
+                          if (window.confirm(`¿Generar Orden de Compra formal para ${cot.cotizacion_id}?`)) {
+                            try {
+                              const res = await api.createOrdenFromCotizacion(cot.cotizacion_id);
+                              alert(`Orden de Compra ${res.oc_id || ''} generada exitosamente.`);
+                              await fetchData();
+                            } catch (e) {
+                              alert('Error al generar Orden de Compra: ' + e.message);
+                            }
+                          }
+                        }}
+                        title="Generar Orden de Compra formal (Cruce de 3 Vías v4.2)"
+                        className="px-2.5 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold flex items-center gap-1.5 min-h-[44px] cursor-pointer transition-all"
+                      >
+                        <ShoppingCart className="w-3.5 h-3.5" />
+                        <span>Generar OC</span>
+                      </button>
+                    )}
 
                     {/* Selector de Estado */}
                     <select
@@ -1150,6 +1242,11 @@ export function CotizacionesView({ onNavigateCompras }) {
                               ) : (
                                 <span className="truncate block" title={linea.descripcion}>
                                   {linea.descripcion}
+                                </span>
+                              )}
+                              {linea.desglose_calculo && (
+                                <span className="text-[10px] text-amber-400/90 font-mono block mt-0.5" title="Desglose de Abastecimiento Periódico (SDD-010)">
+                                  IP:{linea.desglose_calculo.ip} · Demanda:{linea.desglose_calculo.demanda_periodo} + BOM:{linea.desglose_calculo.demanda_bom} · SS:{linea.desglose_calculo.stock_seguridad} · S:{linea.desglose_calculo.objetivo_s} ({linea.desglose_calculo.modo_calculo})
                                 </span>
                               )}
                             </td>
