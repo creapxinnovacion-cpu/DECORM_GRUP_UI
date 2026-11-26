@@ -664,7 +664,12 @@ function getRoutes_() {
     'compras.createBatch': function(p, u, reqId) { return createComprasBatch_(p, u, reqId); },
     'compras.update': function(p, u, reqId) { return updateRowByIndex_('compras', p.rowNumber, p.changes, u, reqId); },
     'compras.clear': function(p, u, reqId) { return clearRowByIndex_('compras', p.rowNumber, u, reqId); },
-    'compras.importDte': handleComprasImportDte_,
+    // Mantener la ruta sin bloquear la inicialización del resto de la API.
+    // La importación DTE debe implementarse antes de habilitar esta operación.
+    'compras.importDte': function(params, user, requestId) {
+      throw appError_('NOT_IMPLEMENTED',
+        'La importación DTE aún no está implementada en este backend. No se registró ninguna compra.');
+    },
 
     'movimientos.list': function(p) { return listEntity_('movimientos', p); },
     'movimientos.create': function(p, u, reqId) { return createMovimiento_(p, u, reqId); },
